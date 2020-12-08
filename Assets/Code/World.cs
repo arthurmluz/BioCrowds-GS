@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using UnityEditor.AI;
 using System.Collections;
 using UnityEngine.AI;
+using System.Linq;
 
 namespace Biocrowds.Core
 {
@@ -57,6 +58,12 @@ namespace Biocrowds.Core
         List<Agent> _agents = new List<Agent>();
         List<Cell> _cells = new List<Cell>();
 
+        public List<SpawnArea> spawnAreas;
+
+        [SerializeField]
+        private Transform _agentsContainer;
+        private int _newAgentID = 0;
+
         public List<Cell> Cells
         {
             get { return _cells; }
@@ -66,8 +73,20 @@ namespace Biocrowds.Core
         private int _maxAuxins;
         private bool _isReady;
 
+        private void Awake()
+        {
+            _newAgentID = 0;
+            if (spawnAreas.Count == 0)
+                spawnAreas = FindObjectsOfType<SpawnArea>().ToList();
+        }
+
+        public void LoadWorld()
+        {
+            StartCoroutine(SetupWorld());
+        }
+
         // Use this for initialization
-        IEnumerator Start()
+        IEnumerator SetupWorld()
         {
             //Application.runInBackground = true;
 
@@ -208,34 +227,16 @@ namespace Biocrowds.Core
 
         private IEnumerator CreateAgents()
         {
-            Transform agentPool = new GameObject("Agents").transform;
-            const float initialXPos = 1.0f;
-            const float initialZPos = 1.0f;
-
-            float xPos = initialXPos;
-            float zPos = initialZPos;
-
+            _agentsContainer = new GameObject("Agents").transform;
+          
             //instantiate agents
-            for (int i = 0; i < _maxAgents; i++)
+            foreach (SpawnArea _area in spawnAreas)
             {
-                Agent newAgent = Instantiate(_agentPrefab, new Vector3(xPos, 0.5f, zPos), Quaternion.identity, agentPool);
-
-                newAgent.name = "Agent [" + i + "]";  //name
-                newAgent.CurrentCell = _cells[i];  //agent cell
-                newAgent.agentRadius = AGENT_RADIUS;  //agent radius
-                newAgent.Goal = _goal.gameObject;  //agent goal
-                newAgent.World = this;
-
-                _agents.Add(newAgent);
-
-                xPos += 1.0f;
-                if (xPos > _dimension.x)
+                for (int i = 0; i < _area.initialNumberOfAgents; i ++)
                 {
-                    xPos = initialXPos;
-                    zPos += 1.0f;
+                    SpawnNewAgent(_area.GetRandomPoint(), _area.initialAgentsGoalList);
+                    yield return null;
                 }
-
-                yield return null;
             }
         }
 
@@ -244,6 +245,19 @@ namespace Biocrowds.Core
         {
             if (!_isReady)
                 return;
+
+            foreach (SpawnArea _area in spawnAreas)
+            {
+                _area.UpdateSpawnCounter(Time.deltaTime);
+                if (_area.CycleReady)
+                {
+                    for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
+                    {
+                        SpawnNewAgent(_area.GetRandomPoint(), _area.repeatingAgentsGoalList);
+                    }
+                }
+                _area.ResetCycleReady();
+            }
 
             //reset auxins
             for (int i = 0; i < _cells.Count; i++)
@@ -265,7 +279,8 @@ namespace Biocrowds.Core
             3 - calculate speed vector 
             4 - step
             */
-            for (int i = 0; i < _maxAgents; i++)
+            //for (int i = 0; i < _maxAgents; i++)
+            for (int i = 0; i < _agents.Count; i++)
             {
                 //find the agent
                 List<Auxin> agentAuxins = _agents[i].Auxins;
@@ -287,6 +302,39 @@ namespace Biocrowds.Core
                 //step
                 _agents[i].Step();
             }
+        }
+
+        private Cell GetClosestCellToPoint (Vector3 point)
+        {
+            float _minDist = Vector3.Distance(point, _cells[0].transform.position);
+            int _minIndex = 0;
+            for (int i = 1; i < _cells.Count; i ++)
+            {
+                if (Vector3.Distance(point, _cells[i].transform.position) < _minDist)
+                {
+                    _minDist = Vector3.Distance(point, _cells[i].transform.position);
+                    _minIndex = i;
+                }
+            }
+
+            return _cells[_minIndex];
+        }
+
+        private void SpawnNewAgent(Vector3 _pos, List<GameObject> _goalList)
+        {
+            Agent newAgent = Instantiate(_agentPrefab, _pos, Quaternion.identity, _agentsContainer);
+            newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
+            newAgent.CurrentCell = GetClosestCellToPoint(_pos);
+            newAgent.agentRadius = AGENT_RADIUS;  //agent radius
+            newAgent.Goal = _goalList[0];  //agent goal
+            newAgent.World = this;
+            _agents.Add(newAgent);
+        }
+
+        private int GetNewAgentID()
+        {
+            _newAgentID++;
+            return _newAgentID - 1;
         }
     }
 }

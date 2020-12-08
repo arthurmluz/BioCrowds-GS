@@ -36,6 +36,7 @@ namespace Biocrowds.Core
         }
 
         //agent cell
+        [SerializeField]
         private Cell _currentCell;
         public Cell CurrentCell
         {
