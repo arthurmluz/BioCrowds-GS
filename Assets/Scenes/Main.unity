@@ -120,7 +120,7 @@ NavMeshSettings:
     accuratePlacement: 0
     debug:
       m_Flags: 0
-  m_NavMeshData: {fileID: 23800000, guid: c6c2ddd071898dd4d91f1834334a15fc, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 5fbc9d0dbaecafe4cbff8840cb63f5d8, type: 2}
 --- !u!1001 &8367844
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -325,6 +325,63 @@ Terrain:
     type: 3}
   m_PrefabInstance: {fileID: 256468985}
   m_PrefabAsset: {fileID: 0}
+--- !u!1001 &628086440
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 1000011549557636, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_Name
+      value: GoalPrefab (2)
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 13.82
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 11.43
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_RootOrder
+      value: 11
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 90
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 180
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000010125518806, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: c1d6a8b56708a2a4b833bbbc88504078, type: 3}
 --- !u!1 &957941447 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1000011549557636, guid: c1d6a8b56708a2a4b833bbbc88504078,
@@ -488,13 +545,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   coll: {fileID: 1363147190}
-  initialNumberOfAgents: 10
+  meshRenderer: {fileID: 0}
+  initialNumberOfAgents: 5
+  initialRemoveWhenGoalReached: 1
   initialAgentsGoalList:
+  - {fileID: 1542970365}
   - {fileID: 1434913267}
-  cycleLenght: 1.5
+  initialWaitList:
+  - 0
+  cycleLenght: 0
   quantitySpawnedEachCycle: 1
-  repeatingAgentsGoalList:
+  repeatingRemoveWhenGoalReached: 1
+  repeatingGoalList:
   - {fileID: 957941447}
+  repeatingWaitList: []
 --- !u!65 &1363147190
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -620,6 +684,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   world: {fileID: 361747811}
   initialSeed: 0
+  hideSpawners: 0
+--- !u!1 &1542970365 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1000011549557636, guid: c1d6a8b56708a2a4b833bbbc88504078,
+    type: 3}
+  m_PrefabInstance: {fileID: 628086440}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1648599570
 GameObject:
   m_ObjectHideFlags: 0
@@ -898,13 +969,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   coll: {fileID: 2067910949}
-  initialNumberOfAgents: 10
+  meshRenderer: {fileID: 0}
+  initialNumberOfAgents: 0
+  initialRemoveWhenGoalReached: 1
   initialAgentsGoalList:
   - {fileID: 1434913267}
-  cycleLenght: 1
+  initialWaitList: []
+  cycleLenght: 0
   quantitySpawnedEachCycle: 2
-  repeatingAgentsGoalList:
+  repeatingRemoveWhenGoalReached: 1
+  repeatingGoalList:
   - {fileID: 957941447}
+  repeatingWaitList: []
 --- !u!65 &2067910949
 BoxCollider:
   m_ObjectHideFlags: 0

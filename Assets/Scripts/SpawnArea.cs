@@ -5,15 +5,20 @@ using UnityEngine;
 public class SpawnArea : MonoBehaviour
 {
     public Collider coll;
+    public MeshRenderer meshRenderer;
 
     [Header("Initial Spawner Settings")]
     public int initialNumberOfAgents;
+    public bool initialRemoveWhenGoalReached;
     public List<GameObject> initialAgentsGoalList;
+    public List<float> initialWaitList;
 
     [Header("Repeating Spawner Settings")]
     public float cycleLenght = 1.0f;
     public int quantitySpawnedEachCycle;
-    public List<GameObject> repeatingAgentsGoalList;
+    public bool repeatingRemoveWhenGoalReached;
+    public List<GameObject> repeatingGoalList;
+    public List<float> repeatingWaitList;
     private float cycleCounter = 0.0f;
     private bool cycleReady = false;
 
@@ -24,6 +29,9 @@ public class SpawnArea : MonoBehaviour
     {
         if (coll == null)
             coll = GetComponent<Collider>();
+        if (meshRenderer == null)
+            meshRenderer = GetComponent<MeshRenderer>();
+
         cycleCounter = 0.0f;
         cycleReady = false;
     }

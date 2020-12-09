@@ -25,6 +25,8 @@ namespace Biocrowds.Core
         //density
         private const float AUXIN_DENSITY = 0.45f; //0.65f;
 
+        private const float GOAL_DISTANCE_THRESHOLD = 0.1f;
+
         [SerializeField]
         private Terrain _terrain;
 
@@ -63,6 +65,7 @@ namespace Biocrowds.Core
         [SerializeField]
         private Transform _agentsContainer;
         private int _newAgentID = 0;
+        public bool removeAtFinalGoal = true;
 
         public List<Cell> Cells
         {
@@ -234,7 +237,7 @@ namespace Biocrowds.Core
             {
                 for (int i = 0; i < _area.initialNumberOfAgents; i ++)
                 {
-                    SpawnNewAgent(_area.GetRandomPoint(), _area.initialAgentsGoalList);
+                    SpawnNewAgentInArea(_area, true);
                     yield return null;
                 }
             }
@@ -253,7 +256,7 @@ namespace Biocrowds.Core
                 {
                     for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
                     {
-                        SpawnNewAgent(_area.GetRandomPoint(), _area.repeatingAgentsGoalList);
+                        SpawnNewAgentInArea(_area, false);
                     }
                 }
                 _area.ResetCycleReady();
@@ -279,6 +282,9 @@ namespace Biocrowds.Core
             3 - calculate speed vector 
             4 - step
             */
+
+            List<Agent> _agentsToRemove = new List<Agent>();
+
             //for (int i = 0; i < _maxAgents; i++)
             for (int i = 0; i < _agents.Count; i++)
             {
@@ -300,8 +306,23 @@ namespace Biocrowds.Core
                 //calculate speed vector
                 _agents[i].CalculateVelocity();
                 //step
-                _agents[i].Step();
+                if (!_agents[i].isWaiting)
+                    _agents[i].Step();
+
+                _agents[i].WaitStep();
+                //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)
+
+
+                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal())
+                    _agentsToRemove.Add(_agents[i]);
             }
+
+            foreach(Agent a in _agentsToRemove)
+            {
+                _agents.Remove(a);
+                Destroy(a.gameObject);
+            }
+            _agentsToRemove.Clear();
         }
 
         private Cell GetClosestCellToPoint (Vector3 point)
@@ -320,13 +341,41 @@ namespace Biocrowds.Core
             return _cells[_minIndex];
         }
 
-        private void SpawnNewAgent(Vector3 _pos, List<GameObject> _goalList)
+        private void SpawnNewAgent(Vector3 _pos, bool _removeWhenGoalReached, 
+            List<GameObject> _goalList)
         {
             Agent newAgent = Instantiate(_agentPrefab, _pos, Quaternion.identity, _agentsContainer);
             newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
             newAgent.Goal = _goalList[0];  //agent goal
+            newAgent.goalsList = _goalList;
+            newAgent.removeWhenGoalReached = _removeWhenGoalReached;
+            newAgent.World = this;
+            _agents.Add(newAgent);
+        }
+
+        private void SpawnNewAgentInArea(SpawnArea _area, bool _isInitialSpawn)
+        {
+            Vector3 _pos = _area.GetRandomPoint();
+            Agent newAgent = Instantiate(_agentPrefab, _pos, Quaternion.identity, _agentsContainer);
+            newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
+            newAgent.CurrentCell = GetClosestCellToPoint(_pos);
+            newAgent.agentRadius = AGENT_RADIUS;  //agent radius
+            if (_isInitialSpawn)
+            {
+                newAgent.Goal = _area.initialAgentsGoalList[0];  //agent goal
+                newAgent.goalsList = _area.initialAgentsGoalList;
+                newAgent.removeWhenGoalReached = _area.initialRemoveWhenGoalReached;
+                newAgent.goalsWaitList = _area.initialWaitList;
+            }
+            else
+            {
+                newAgent.Goal = _area.repeatingGoalList[0];  //agent goal
+                newAgent.goalsList = _area.repeatingGoalList;
+                newAgent.removeWhenGoalReached = _area.repeatingRemoveWhenGoalReached;
+                newAgent.goalsWaitList = _area.repeatingWaitList;
+            }
             newAgent.World = this;
             _agents.Add(newAgent);
         }

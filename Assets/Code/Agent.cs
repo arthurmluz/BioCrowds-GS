@@ -26,6 +26,18 @@ namespace Biocrowds.Core
 
         //goal
         public GameObject Goal;
+        // Multiple goals
+        public List<GameObject> goalsList;
+        public List<float> goalsWaitList;
+        public bool isWaiting = false;
+        [SerializeField]
+        private float waitCount = 0f;
+
+        [SerializeField]
+        private int goalIndex = 0;
+        public bool removeWhenGoalReached;
+
+        private float _goalDistThreshold = 1.0f;
 
         //list with all auxins in his personal space
         private List<Auxin> _auxins = new List<Auxin>();
@@ -67,7 +79,7 @@ namespace Biocrowds.Core
         private Vector3 _rotation; //orientation vector (movement)
         private Vector3 _goalPosition; //goal position
         private Vector3 _dirAgentGoal; //diff between goal and agent
-      
+
 
         void Start()
         {
@@ -91,22 +103,31 @@ namespace Biocrowds.Core
 
             if (_elapsedTime > UPDATE_NAVMESH_INTERVAL)
             {
-                _elapsedTime = 0.0f;
-
-                //calculate agent path
-               bool foundPath = NavMesh.CalculatePath(transform.position, Goal.transform.position, NavMesh.AllAreas, _navMeshPath);
-
-                //update its goal if path is found
-                if (foundPath)
-                {
-                    _goalPosition = new Vector3(_navMeshPath.corners[1].x, 0f, _navMeshPath.corners[1].z);
-                    _dirAgentGoal = _goalPosition - transform.position;
-                }
+                UpdateGoalPositionAndNavmesh();
             }
 
             //draw line to goal
             for (int i = 0; i < _navMeshPath.corners.Length - 1; i++)
                 Debug.DrawLine(_navMeshPath.corners[i], _navMeshPath.corners[i + 1], Color.red);
+        }
+
+        private void UpdateGoalPositionAndNavmesh()
+        {
+            if (goalIndex >= goalsList.Count)
+                return;
+
+            _elapsedTime = 0.0f;
+
+            //calculate agent path
+            //bool foundPath = NavMesh.CalculatePath(transform.position, Goal.transform.position, NavMesh.AllAreas, _navMeshPath);
+            bool foundPath = NavMesh.CalculatePath(transform.position, goalsList[goalIndex].transform.position,
+                NavMesh.AllAreas, _navMeshPath);
+            //update its goal if path is found
+            if (foundPath)
+            {
+                _goalPosition = new Vector3(_navMeshPath.corners[1].x, 0f, _navMeshPath.corners[1].z);
+                _dirAgentGoal = _goalPosition - transform.position;
+            }
         }
 
         //clear agent´s informations
@@ -125,6 +146,65 @@ namespace Biocrowds.Core
         {
             if (_velocity.sqrMagnitude > 0.0f)
                 transform.Translate(_velocity * Time.deltaTime, Space.World);
+        }
+
+        public void WaitStep()
+        {
+            if (goalIndex != goalsWaitList.Count - 1 && goalIndex + 1 > goalsWaitList.Count)
+            {
+                //Debug.LogError("No wait defined for current goal");
+                return;
+            }
+            if (isWaiting)
+            {
+                waitCount += Time.deltaTime;
+                if (waitCount >= goalsWaitList[goalIndex])
+                {
+                    isWaiting = false;
+                    goalIndex++;
+                    UpdateGoalPositionAndNavmesh();
+                }
+            }
+            else if (IsAtCurrentGoal() && goalIndex < goalsList.Count - 1)
+            {
+                if (goalsWaitList[goalIndex] >= 0.1f)
+                {
+                    waitCount = 0.0f;
+                    isWaiting = true;
+                }
+                else
+                {
+                    waitCount = 0.0f;
+                    goalIndex++;
+                    UpdateGoalPositionAndNavmesh();
+                }
+            }
+            /*if (!isWaiting)
+            {
+                if (IsAtCurrentGoal())
+                {
+                    if (goalsWaitList[goalIndex] >= 0.0f)
+                    {
+                        waitCount = 0.0f;
+                        isWaiting = true;
+                    }
+                    else
+                    {
+                        waitCount = 0.0f;
+                        goalIndex++;
+                        UpdateGoalPositionAndNavmesh();
+                    }
+                }
+            }
+            else
+            {
+                waitCount += Time.deltaTime;
+                if (waitCount >= goalsWaitList[goalIndex])
+                {
+                    goalIndex++;
+                    UpdateGoalPositionAndNavmesh();
+                }
+            }*/
         }
 
         //The calculation formula starts here
@@ -319,6 +399,17 @@ namespace Biocrowds.Core
                 pDistToCellSqr = distanceToNeighbourCell;
                 _currentCell = pCell;
             }
+        }
+        public bool IsAtCurrentGoal()
+        {
+            //Debug.Log(name + " : " + Vector3.Distance(transform.position, _goalPosition));
+            return (Vector3.Distance(transform.position, goalsList[goalIndex].transform.position) <= _goalDistThreshold);
+        }
+
+        public bool IsAtFinalGoal()
+        {
+            //Debug.Log(name + " : " + Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position));
+            return (Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position) <= _goalDistThreshold);
         }
     }
 }
