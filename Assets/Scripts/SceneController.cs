@@ -12,6 +12,7 @@ public class SceneController : MonoBehaviour
     public int initialSeed;
 
     public bool hideSpawners;
+    private bool initialized = false;
 
     private void Awake()
     {
@@ -30,7 +31,7 @@ public class SceneController : MonoBehaviour
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha1))
+        if (Input.GetKeyDown(KeyCode.Alpha1) && !initialized)
         {
             Debug.Log("Loading World");
 
@@ -41,6 +42,7 @@ public class SceneController : MonoBehaviour
                     s.meshRenderer.enabled = false;
             }
 
+            initialized = true;
             world.LoadWorld();
         }
     }

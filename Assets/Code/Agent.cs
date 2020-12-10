@@ -128,6 +128,11 @@ namespace Biocrowds.Core
                 _goalPosition = new Vector3(_navMeshPath.corners[1].x, 0f, _navMeshPath.corners[1].z);
                 _dirAgentGoal = _goalPosition - transform.position;
             }
+            else
+            {
+                _goalPosition = goalsList[goalIndex].transform.position;
+                _dirAgentGoal = _goalPosition - transform.position;
+            }
         }
 
         //clear agent´s informations
