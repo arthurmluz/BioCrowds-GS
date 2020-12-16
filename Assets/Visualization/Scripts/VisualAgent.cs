@@ -22,22 +22,8 @@ public class VisualAgent : MonoBehaviour
         }
     }
 	// Update is called once per frame
-	void Update () {
-        /*
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
-
-        
-        transform.Translate(speed * Time.deltaTime, Space.World);
-
-        
-        */
-        /*(if (!updated)
-        {
-            Destroy(this.gameObject);
-        }*/
-
-
+	void Update () 
+    {
         prevMoveVect = currMoveVect;
         currMoveVect = currPosition - transform.parent.position;
         currMoveVect.y = 0f;
@@ -61,17 +47,17 @@ public class VisualAgent : MonoBehaviour
         //float estFutureAngDif = Vector3.SignedAngle(prevV, currMoveVect, Vector3.back);
         //float avgAngleDif = (presentAvgAngleDif + estFutureAngDif) / 2;
         float totalAngleDiff = Vector3.SignedAngle(currMoveVect, prevMoveVect, Vector3.up);
-        Debug.Log(totalAngleDiff);
+        //Debug.Log(totalAngleDiff);
         float angFact = totalAngleDiff / 90f;
         anim.SetFloat("AngSpeed", angFact * 0.5f);// Mathf.Clamp(angDif/6f,-1f,1f));
 
-
+        
         //transform.Rotate(new Vector3(0, totalAngleDiff * 0.05f, 0), Space.World);
         //transform.rotation = Quaternion.Euler(0, Mathf.Atan2(speed.x,speed.z)*180f,0);
         transform.LookAt(transform.position - currMoveVect, Vector3.up);
-        anim.SetFloat("Speed", presentAvgSpeed*8f);
+        anim.SetFloat("Speed", Mathf.Clamp(presentAvgSpeed*6f, 0f, 0.9f));
         //anim.SetFloat("AngSpeed", presentAvgAngleDif/3f);
-
+        //anim.SetFloat("Motion_Time", anim.GetFloat("Motion_Time") + 0.02f);
         //transform.position = currPosition;
         currPosition = transform.parent.position;
         qview = moveMem.ToArray();
@@ -87,7 +73,7 @@ public class VisualAgent : MonoBehaviour
         currPosition = new Vector3(pos.x, pos.y, pos.z);
         transform.position = currPosition;
         updated = false;
-        for (int i = 0; i < 30; i++)
+        for (int i = 0; i < 15; i++)
         {
             moveMem.Enqueue(0);
         }

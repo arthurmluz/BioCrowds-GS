@@ -7,6 +7,7 @@ using System.Linq;
 
 public class SceneController : MonoBehaviour
 {
+
     public World world;
     public static System.Random SpawnerRandom;
     public int initialSeed;
@@ -14,8 +15,23 @@ public class SceneController : MonoBehaviour
     public bool hideSpawners;
     private bool initialized = false;
 
+    public static bool ShowCells { get; protected set; } = true;
+    public static bool ShowAuxins { get; protected set; } = true;
+    public static bool ShowSpawnAreas { get; protected set; } = true;
+    public static bool ShowAuxinVectors { get; protected set; } = true;
+
+    [Header("Render Settings")]
+    public bool _showCells;
+    public bool _showAuxins;
+    public bool _showAuxinVector;
+    public bool _showSpawnAreas;
+
     private void Awake()
     {
+        ShowCells = _showCells;
+        ShowAuxins = _showAuxins;
+        ShowSpawnAreas = _showSpawnAreas;
+        ShowAuxinVectors = _showAuxinVector;
         SpawnerRandom = new System.Random(initialSeed);
     }
     void Start()
@@ -25,6 +41,25 @@ public class SceneController : MonoBehaviour
 
     void Update()
     {
+        if (_showCells != ShowCells)
+        {
+            ShowCells = _showCells;
+            world.ShowCellMeshes(_showCells);
+        }
+        if (_showAuxins != ShowAuxins)
+        {
+            ShowAuxins = _showAuxins;
+            world.ShowAuxinMeshes(_showAuxins);
+        }
+        if (_showSpawnAreas != ShowSpawnAreas)
+        {
+            ShowSpawnAreas = _showSpawnAreas;
+            List<SpawnArea> _spawners = FindObjectsOfType<SpawnArea>().ToList();
+            foreach (SpawnArea s in _spawners)
+                s.ShowMesh(_showSpawnAreas);
+        }
+        if (_showAuxinVector != ShowAuxinVectors) ShowAuxinVectors = _showAuxinVector;
+
         if (Input.GetKeyDown(KeyCode.R))
         {
             Debug.Log("Reloading Scene");
@@ -35,15 +70,13 @@ public class SceneController : MonoBehaviour
         {
             Debug.Log("Loading World");
 
-            if (hideSpawners)
-            {
-                List<SpawnArea> _spawners = FindObjectsOfType<SpawnArea>().ToList();
-                foreach (SpawnArea s in _spawners)
-                    s.meshRenderer.enabled = false;
-            }
+            List<SpawnArea> _spawners = FindObjectsOfType<SpawnArea>().ToList();
+            foreach (SpawnArea s in _spawners)
+                s.ShowMesh(ShowSpawnAreas);
 
             initialized = true;
             world.LoadWorld();
         }
+
     }
 }

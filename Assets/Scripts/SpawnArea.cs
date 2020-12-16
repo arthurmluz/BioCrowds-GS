@@ -4,8 +4,8 @@ using UnityEngine;
 
 public class SpawnArea : MonoBehaviour
 {
-    public Collider coll;
-    public MeshRenderer meshRenderer;
+    private Collider _collider;
+    private MeshRenderer _meshRenderer;
 
     [Header("Initial Spawner Settings")]
     public int initialNumberOfAgents;
@@ -27,10 +27,10 @@ public class SpawnArea : MonoBehaviour
 
     private void Awake()
     {
-        if (coll == null)
-            coll = GetComponent<Collider>();
-        if (meshRenderer == null)
-            meshRenderer = GetComponent<MeshRenderer>();
+        if (_collider == null)
+            _collider = GetComponent<Collider>();
+        if (_meshRenderer == null)
+            _meshRenderer = GetComponent<MeshRenderer>();
 
         cycleCounter = 0.0f;
         cycleReady = false;
@@ -61,14 +61,18 @@ public class SpawnArea : MonoBehaviour
         cycleReady = false;
     }
 
-    public Vector3 GetRandomPoint(float height = 0.5f)
+    public Vector3 GetRandomPoint(float height = 0.0f)
     {
         Vector3 point = new Vector3(
-            Random.Range(coll.bounds.min.x, coll.bounds.max.x), 
+            Random.Range(_collider.bounds.min.x, _collider.bounds.max.x), 
             height,
-            Random.Range(coll.bounds.min.z, coll.bounds.max.z)
+            Random.Range(_collider.bounds.min.z, _collider.bounds.max.z)
         );
         
-        return coll.ClosestPoint(point);
+        return _collider.ClosestPoint(point);
+    }
+    public void ShowMesh(bool _show)
+    {
+        _meshRenderer.enabled = _show;
     }
 }

@@ -40,6 +40,7 @@ namespace Biocrowds.Core
         private float _goalDistThreshold = 1.0f;
 
         //list with all auxins in his personal space
+        [SerializeField]
         private List<Auxin> _auxins = new List<Auxin>();
         public List<Auxin> Auxins
         {
@@ -80,6 +81,7 @@ namespace Biocrowds.Core
         private Vector3 _goalPosition; //goal position
         private Vector3 _dirAgentGoal; //diff between goal and agent
 
+        public int auxinCount;
 
         void Start()
         {
@@ -184,32 +186,6 @@ namespace Biocrowds.Core
                     UpdateGoalPositionAndNavmesh();
                 }
             }
-            /*if (!isWaiting)
-            {
-                if (IsAtCurrentGoal())
-                {
-                    if (goalsWaitList[goalIndex] >= 0.0f)
-                    {
-                        waitCount = 0.0f;
-                        isWaiting = true;
-                    }
-                    else
-                    {
-                        waitCount = 0.0f;
-                        goalIndex++;
-                        UpdateGoalPositionAndNavmesh();
-                    }
-                }
-            }
-            else
-            {
-                waitCount += Time.deltaTime;
-                if (waitCount >= goalsWaitList[goalIndex])
-                {
-                    goalIndex++;
-                    UpdateGoalPositionAndNavmesh();
-                }
-            }*/
         }
 
         //The calculation formula starts here

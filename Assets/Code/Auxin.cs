@@ -12,6 +12,9 @@ namespace Biocrowds.Core
 {
     public class Auxin : MonoBehaviour
     {
+        [SerializeField]
+        private MeshRenderer _meshRenderer;
+
         //is auxin taken?
         private bool _isTaken = false;
         public bool IsTaken
@@ -70,5 +73,9 @@ namespace Biocrowds.Core
         //    Gizmos.color = Color.black;
         //    Gizmos.DrawSphere(_position, 0.075f);
         //}
+        public void ShowMesh(bool _show)
+        {
+            _meshRenderer.enabled = _show;
+        }
     }
 }

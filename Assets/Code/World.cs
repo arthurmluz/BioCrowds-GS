@@ -17,13 +17,13 @@ namespace Biocrowds.Core
     public class World : MonoBehaviour
     {
         //agent radius
-        private const float AGENT_RADIUS = 1.0f;
+        private const float AGENT_RADIUS = 1.00f;
 
         //radius for auxin collide
         private const float AUXIN_RADIUS = 0.1f;
 
         //density
-        private const float AUXIN_DENSITY = 0.45f; //0.65f;
+        private const float AUXIN_DENSITY = 0.50f;//0.45f; //0.65f;
 
         private const float GOAL_DISTANCE_THRESHOLD = 0.1f;
 
@@ -49,6 +49,9 @@ namespace Biocrowds.Core
         private Agent _agentPrefab;
 
         [SerializeField]
+        private List<Agent> _agentPrefabList;
+
+        [SerializeField]
         private Cell _cellPrefab;
 
         [SerializeField]
@@ -57,8 +60,10 @@ namespace Biocrowds.Core
         [SerializeField]
         private BoxCollider _obstacleCollider;
 
-        List<Agent> _agents = new List<Agent>();
+        [SerializeField]
+        private List<Agent> _agents = new List<Agent>();
         List<Cell> _cells = new List<Cell>();
+        List<Auxin> _auxins = new List<Auxin>();
 
         public List<SpawnArea> spawnAreas;
 
@@ -71,6 +76,12 @@ namespace Biocrowds.Core
         {
             get { return _cells; }
         }
+
+        public List<Auxin> Auxins
+        {
+            get { return _auxins; }
+        }
+
 
         //max auxins on the ground
         private int _maxAuxins;
@@ -130,6 +141,8 @@ namespace Biocrowds.Core
                     //metadata for optimization
                     newCell.X = i;
                     newCell.Z = j;
+
+                    newCell.ShowMesh(SceneController.ShowCells);
 
                     _cells.Add(newCell);
 
@@ -200,6 +213,9 @@ namespace Biocrowds.Core
                         //set position
                         newAuxin.Position = new Vector3(x, 0f, z);
 
+                        newAuxin.ShowMesh(SceneController.ShowAuxins);
+
+                        _auxins.Add(newAuxin);
                         //add this auxin to this cell
                         _cells[c].Auxins.Add(newAuxin);
 
@@ -246,6 +262,7 @@ namespace Biocrowds.Core
         // Update is called once per frame
         void Update()
         {
+            //TODO: Modificar de time-deltatime para fixed frame
             if (!_isReady)
                 return;
 
@@ -271,6 +288,9 @@ namespace Biocrowds.Core
             for (int i = 0; i < _agents.Count; i++)
                 _agents[i].FindNearAuxins();
 
+
+            for (int i = 0; i < _agents.Count; i++)
+                _agents[i].auxinCount = _agents[i].Auxins.Count;
             /*
              * to find where the agent must move, we need to get the vectors from the agent to each auxin he has, and compare with 
              * the vector from agent to goal, generating a angle which must lie between 0 (best case) and 180 (worst case)
@@ -284,7 +304,7 @@ namespace Biocrowds.Core
             */
 
             List<Agent> _agentsToRemove = new List<Agent>();
-
+            bool _showAgentAuxingVector = SceneController.ShowAuxinVectors;
             //for (int i = 0; i < _maxAgents; i++)
             for (int i = 0; i < _agents.Count; i++)
             {
@@ -298,7 +318,8 @@ namespace Biocrowds.Core
                     _agents[i]._distAuxin.Add(agentAuxins[j].Position - _agents[i].transform.position);
 
                     //just draw the lines to each auxin
-                    Debug.DrawLine(agentAuxins[j].Position, _agents[i].transform.position, Color.green);
+                    if (_showAgentAuxingVector)
+                        Debug.DrawLine(agentAuxins[j].Position, _agents[i].transform.position, Color.green);
                 }
 
                 //calculate the movement vector
@@ -344,7 +365,8 @@ namespace Biocrowds.Core
         private void SpawnNewAgent(Vector3 _pos, bool _removeWhenGoalReached, 
             List<GameObject> _goalList)
         {
-            Agent newAgent = Instantiate(_agentPrefab, _pos, Quaternion.identity, _agentsContainer);
+            Agent newAgent = Instantiate(_agentPrefabList[Random.Range(0, _agentPrefabList.Count)],
+                _pos, Quaternion.identity, _agentsContainer);
             newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
@@ -358,7 +380,8 @@ namespace Biocrowds.Core
         private void SpawnNewAgentInArea(SpawnArea _area, bool _isInitialSpawn)
         {
             Vector3 _pos = _area.GetRandomPoint();
-            Agent newAgent = Instantiate(_agentPrefab, _pos, Quaternion.identity, _agentsContainer);
+            Agent newAgent = Instantiate(_agentPrefabList[Random.Range(0, _agentPrefabList.Count)], 
+                _pos, Quaternion.identity, _agentsContainer);
             newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
@@ -384,6 +407,17 @@ namespace Biocrowds.Core
         {
             _newAgentID++;
             return _newAgentID - 1;
+        }
+
+        public void ShowAuxinMeshes (bool p_enable)
+        {
+            foreach (Auxin _a in Auxins)
+                _a.ShowMesh(p_enable);
+        }
+        public void ShowCellMeshes(bool p_enable)
+        {
+            foreach (Cell _c in Cells)
+                _c.ShowMesh(p_enable);
         }
     }
 }
