@@ -16,16 +16,18 @@ namespace Biocrowds.Core
 {
     public class World : MonoBehaviour
     {
+        [SerializeField] private float SIMULATION_TIME_STEP = 0.02f;
+
         //agent radius
-        private const float AGENT_RADIUS = 1.00f;
+        [SerializeField] private float AGENT_RADIUS = 1.00f;
 
         //radius for auxin collide
-        private const float AUXIN_RADIUS = 0.1f;
+        [SerializeField] private float AUXIN_RADIUS = 0.1f;
 
         //density
-        private const float AUXIN_DENSITY = 0.50f;//0.45f; //0.65f;
+        [SerializeField] private float AUXIN_DENSITY = 0.50f;
 
-        private const float GOAL_DISTANCE_THRESHOLD = 0.1f;
+        [SerializeField] private float GOAL_DISTANCE_THRESHOLD = 1.0f;
 
         [SerializeField]
         private Terrain _terrain;
@@ -46,9 +48,6 @@ namespace Biocrowds.Core
 
         //agent prefab
         [SerializeField]
-        private Agent _agentPrefab;
-
-        [SerializeField]
         private List<Agent> _agentPrefabList;
 
         [SerializeField]
@@ -57,8 +56,6 @@ namespace Biocrowds.Core
         [SerializeField]
         private Auxin _auxinPrefab;
 
-        [SerializeField]
-        private BoxCollider _obstacleCollider;
 
         [SerializeField]
         private List<Agent> _agents = new List<Agent>();
@@ -70,7 +67,6 @@ namespace Biocrowds.Core
         [SerializeField]
         private Transform _agentsContainer;
         private int _newAgentID = 0;
-        public bool removeAtFinalGoal = true;
 
         public List<Cell> Cells
         {
@@ -84,7 +80,6 @@ namespace Biocrowds.Core
 
 
         //max auxins on the ground
-        private int _maxAuxins;
         private bool _isReady;
 
         private void Awake()
@@ -161,7 +156,8 @@ namespace Biocrowds.Core
             densityToQnt *= 2f / (2.0f * AUXIN_RADIUS);
             densityToQnt *= 2f / (2.0f * AUXIN_RADIUS);
 
-            _maxAuxins = (int)Mathf.Floor(densityToQnt);
+            
+            int _maxAuxins = (int)Mathf.Floor(densityToQnt);
 
             //for each cell, we generate its auxins
             for (int c = 0; c < _cells.Count; c++)
@@ -268,7 +264,7 @@ namespace Biocrowds.Core
 
             foreach (SpawnArea _area in spawnAreas)
             {
-                _area.UpdateSpawnCounter(Time.deltaTime);
+                _area.UpdateSpawnCounter(SIMULATION_TIME_STEP);
                 if (_area.CycleReady)
                 {
                     for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
@@ -279,15 +275,20 @@ namespace Biocrowds.Core
                 _area.ResetCycleReady();
             }
 
+            // Update de Navmesh for each agent 
+            for (int i = 0; i < _agents.Count; i++)
+                _agents[i].UpdateVisualAgent();
+
             //reset auxins
             for (int i = 0; i < _cells.Count; i++)
                 for (int j = 0; j < _cells[i].Auxins.Count; j++)
                     _cells[i].Auxins[j].ResetAuxin();
 
+           
+
             //find nearest auxins for each agent
             for (int i = 0; i < _agents.Count; i++)
                 _agents[i].FindNearAuxins();
-
 
             for (int i = 0; i < _agents.Count; i++)
                 _agents[i].auxinCount = _agents[i].Auxins.Count;
@@ -328,9 +329,9 @@ namespace Biocrowds.Core
                 _agents[i].CalculateVelocity();
                 //step
                 if (!_agents[i].isWaiting)
-                    _agents[i].Step();
+                    _agents[i].MovementStep(SIMULATION_TIME_STEP);
 
-                _agents[i].WaitStep();
+                _agents[i].WaitStep(SIMULATION_TIME_STEP);
                 //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)
 
 
@@ -344,6 +345,12 @@ namespace Biocrowds.Core
                 Destroy(a.gameObject);
             }
             _agentsToRemove.Clear();
+
+            // Update de Navmesh for each agent 
+            for (int i = 0; i < _agents.Count; i++)
+                _agents[i].NavmeshStep(SIMULATION_TIME_STEP);
+
+            
         }
 
         private Cell GetClosestCellToPoint (Vector3 point)
@@ -385,6 +392,7 @@ namespace Biocrowds.Core
             newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
+            newAgent.goalDistThreshold = GOAL_DISTANCE_THRESHOLD;
             if (_isInitialSpawn)
             {
                 newAgent.Goal = _area.initialAgentsGoalList[0];  //agent goal

@@ -37,7 +37,7 @@ namespace Biocrowds.Core
         private int goalIndex = 0;
         public bool removeWhenGoalReached;
 
-        private float _goalDistThreshold = 1.0f;
+        public float goalDistThreshold = 1.0f;
 
         //list with all auxins in his personal space
         [SerializeField]
@@ -69,6 +69,8 @@ namespace Biocrowds.Core
 
         private NavMeshPath _navMeshPath;
 
+        public VisualAgent _visualAgent;
+
         //time elapsed (to calculate path just between an interval of time)
         private float _elapsedTime;
         //auxins distance vector from agent
@@ -86,6 +88,7 @@ namespace Biocrowds.Core
         void Start()
         {
             _navMeshPath = new NavMeshPath();
+            if (_visualAgent == null) _visualAgent = GetComponentInChildren<VisualAgent>();
 
             _goalPosition = Goal.transform.position;
             _dirAgentGoal = _goalPosition - transform.position;
@@ -95,13 +98,34 @@ namespace Biocrowds.Core
             _totalZ = Mathf.FloorToInt(_world.Dimension.y / 2.0f);
         }
 
-        void Update()
+        public void NavmeshStep(float _timeStep)
         {
             //clear agent´s information
             ClearAgent();
             
             // Update the way to the goal every second.
-            _elapsedTime += Time.deltaTime;
+            _elapsedTime += _timeStep;
+
+            if (_elapsedTime > UPDATE_NAVMESH_INTERVAL)
+            {
+                UpdateGoalPositionAndNavmesh();
+            }
+
+            //draw line to goal
+            if (_navMeshPath != null && SceneController.ShowNavMeshCorners)
+            {
+                for (int i = 0; i < _navMeshPath.corners.Length - 1; i++)
+                    Debug.DrawLine(_navMeshPath.corners[i], _navMeshPath.corners[i + 1], Color.red);
+            }
+        }
+
+        /*void Update()
+        {
+            //clear agent´s information
+            ClearAgent();
+
+            // Update the way to the goal every second.
+            _elapsedTime += 0.02f;
 
             if (_elapsedTime > UPDATE_NAVMESH_INTERVAL)
             {
@@ -111,7 +135,7 @@ namespace Biocrowds.Core
             //draw line to goal
             for (int i = 0; i < _navMeshPath.corners.Length - 1; i++)
                 Debug.DrawLine(_navMeshPath.corners[i], _navMeshPath.corners[i + 1], Color.red);
-        }
+        }*/
 
         private void UpdateGoalPositionAndNavmesh()
         {
@@ -137,6 +161,11 @@ namespace Biocrowds.Core
             }
         }
 
+        public void UpdateVisualAgent()
+        {
+            if (_visualAgent != null) _visualAgent.Step();
+        }
+
         //clear agent´s informations
         void ClearAgent()
         {
@@ -149,13 +178,13 @@ namespace Biocrowds.Core
         }
 
         //walk
-        public void Step()
+        public void MovementStep(float _timeStep)
         {
             if (_velocity.sqrMagnitude > 0.0f)
-                transform.Translate(_velocity * Time.deltaTime, Space.World);
+                transform.Translate(_velocity * _timeStep, Space.World);
         }
 
-        public void WaitStep()
+        public void WaitStep(float _timeStep)
         {
             if (goalIndex != goalsWaitList.Count - 1 && goalIndex + 1 > goalsWaitList.Count)
             {
@@ -164,7 +193,7 @@ namespace Biocrowds.Core
             }
             if (isWaiting)
             {
-                waitCount += Time.deltaTime;
+                waitCount += _timeStep;
                 if (waitCount >= goalsWaitList[goalIndex])
                 {
                     isWaiting = false;
@@ -384,13 +413,13 @@ namespace Biocrowds.Core
         public bool IsAtCurrentGoal()
         {
             //Debug.Log(name + " : " + Vector3.Distance(transform.position, _goalPosition));
-            return (Vector3.Distance(transform.position, goalsList[goalIndex].transform.position) <= _goalDistThreshold);
+            return (Vector3.Distance(transform.position, goalsList[goalIndex].transform.position) <= goalDistThreshold);
         }
 
         public bool IsAtFinalGoal()
         {
             //Debug.Log(name + " : " + Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position));
-            return (Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position) <= _goalDistThreshold);
+            return (Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position) <= goalDistThreshold);
         }
     }
 }

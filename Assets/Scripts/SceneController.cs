@@ -7,12 +7,7 @@ using System.Linq;
 
 public class SceneController : MonoBehaviour
 {
-
     public World world;
-    public static System.Random SpawnerRandom;
-    public int initialSeed;
-
-    public bool hideSpawners;
     private bool initialized = false;
 
     public static bool ShowCells { get; protected set; } = true;
@@ -20,11 +15,14 @@ public class SceneController : MonoBehaviour
     public static bool ShowSpawnAreas { get; protected set; } = true;
     public static bool ShowAuxinVectors { get; protected set; } = true;
 
+    public static bool ShowNavMeshCorners { get; protected set; } = true;
+
     [Header("Render Settings")]
     public bool _showCells;
     public bool _showAuxins;
     public bool _showAuxinVector;
     public bool _showSpawnAreas;
+    public bool _showNavMeshCorners;
 
     private void Awake()
     {
@@ -32,7 +30,7 @@ public class SceneController : MonoBehaviour
         ShowAuxins = _showAuxins;
         ShowSpawnAreas = _showSpawnAreas;
         ShowAuxinVectors = _showAuxinVector;
-        SpawnerRandom = new System.Random(initialSeed);
+        ShowNavMeshCorners = _showNavMeshCorners;
     }
     void Start()
     {
@@ -59,6 +57,7 @@ public class SceneController : MonoBehaviour
                 s.ShowMesh(_showSpawnAreas);
         }
         if (_showAuxinVector != ShowAuxinVectors) ShowAuxinVectors = _showAuxinVector;
+        if (_showNavMeshCorners != ShowNavMeshCorners) ShowNavMeshCorners = _showNavMeshCorners;
 
         if (Input.GetKeyDown(KeyCode.R))
         {

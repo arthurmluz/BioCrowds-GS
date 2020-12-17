@@ -22,7 +22,7 @@ public class VisualAgent : MonoBehaviour
         }
     }
 	// Update is called once per frame
-	void Update () 
+	public void Step() 
     {
         prevMoveVect = currMoveVect;
         currMoveVect = currPosition - transform.parent.position;
@@ -55,9 +55,9 @@ public class VisualAgent : MonoBehaviour
         //transform.Rotate(new Vector3(0, totalAngleDiff * 0.05f, 0), Space.World);
         //transform.rotation = Quaternion.Euler(0, Mathf.Atan2(speed.x,speed.z)*180f,0);
         transform.LookAt(transform.position - currMoveVect, Vector3.up);
-        anim.SetFloat("Speed", Mathf.Clamp(presentAvgSpeed*6f, 0f, 0.9f));
+        anim.SetFloat("Speed", Mathf.Clamp(presentAvgSpeed*32f, 0f, 0.9f));
         //anim.SetFloat("AngSpeed", presentAvgAngleDif/3f);
-        //anim.SetFloat("Motion_Time", anim.GetFloat("Motion_Time") + 0.02f);
+        anim.SetFloat("Motion_Time", anim.GetFloat("Motion_Time") + (0.02f * presentAvgSpeed * 32f));
         //transform.position = currPosition;
         currPosition = transform.parent.position;
         qview = moveMem.ToArray();
