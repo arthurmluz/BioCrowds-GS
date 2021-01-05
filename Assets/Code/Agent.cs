@@ -89,10 +89,11 @@ namespace Biocrowds.Core
         {
             _navMeshPath = new NavMeshPath();
             if (_visualAgent == null) _visualAgent = GetComponentInChildren<VisualAgent>();
+           
 
             _goalPosition = Goal.transform.position;
             _dirAgentGoal = _goalPosition - transform.position;
-
+            _visualAgent.Initialize(transform.position, this);
             //cache world info
             _totalX = Mathf.FloorToInt(_world.Dimension.x / 2.0f) - 1;
             _totalZ = Mathf.FloorToInt(_world.Dimension.y / 2.0f);
@@ -413,13 +414,19 @@ namespace Biocrowds.Core
         public bool IsAtCurrentGoal()
         {
             //Debug.Log(name + " : " + Vector3.Distance(transform.position, _goalPosition));
-            return (Vector3.Distance(transform.position, goalsList[goalIndex].transform.position) <= goalDistThreshold);
+            Vector2 agentPos = new Vector2(transform.position.x, transform.position.z);
+            Vector2 goalPos = new Vector2(goalsList[goalIndex].transform.position.x,
+                goalsList[goalIndex].transform.position.z);
+            return (Vector2.Distance(agentPos, goalPos) <= goalDistThreshold);
         }
 
         public bool IsAtFinalGoal()
         {
             //Debug.Log(name + " : " + Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position));
-            return (Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position) <= goalDistThreshold);
+            Vector2 agentPos = new Vector2(transform.position.x, transform.position.z);
+            Vector2 goalPos = new Vector2(goalsList[goalsList.Count - 1].transform.position.x,
+                goalsList[goalsList.Count - 1].transform.position.z);
+            return (Vector2.Distance(agentPos, goalPos) <= goalDistThreshold);
         }
     }
 }

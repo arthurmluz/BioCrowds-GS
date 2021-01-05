@@ -18,6 +18,7 @@ namespace Biocrowds.Core
     {
         [SerializeField] private float SIMULATION_TIME_STEP = 0.02f;
 
+        [SerializeField] private float MAX_AGENTS = 0;
         //agent radius
         [SerializeField] private float AGENT_RADIUS = 1.00f;
 
@@ -31,9 +32,6 @@ namespace Biocrowds.Core
 
         [SerializeField]
         private Terrain _terrain;
-
-        [SerializeField]
-        private Transform _goal;
 
         [SerializeField]
         private Vector2 _dimension = new Vector2(30.0f, 20.0f);
@@ -117,6 +115,7 @@ namespace Biocrowds.Core
             //wait a little bit to start moving
             yield return new WaitForSeconds(1.0f);
             _isReady = true;
+            Debug.Break();
         }
 
         private IEnumerator CreateCells()
@@ -249,7 +248,8 @@ namespace Biocrowds.Core
             {
                 for (int i = 0; i < _area.initialNumberOfAgents; i ++)
                 {
-                    SpawnNewAgentInArea(_area, true);
+                    if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
+                        SpawnNewAgentInArea(_area, true);
                     yield return null;
                 }
             }
@@ -269,7 +269,8 @@ namespace Biocrowds.Core
                 {
                     for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
                     {
-                        SpawnNewAgentInArea(_area, false);
+                        if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
+                            SpawnNewAgentInArea(_area, false);
                     }
                 }
                 _area.ResetCycleReady();
