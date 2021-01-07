@@ -6,6 +6,7 @@
 /// ---------------------------------------------
 
 using UnityEngine;
+using UnityEditor;
 using System.Collections.Generic;
 using UnityEditor.AI;
 using System.Collections;
@@ -30,6 +31,9 @@ namespace Biocrowds.Core
 
         [SerializeField] private float GOAL_DISTANCE_THRESHOLD = 1.0f;
 
+        [Header("Terrain Setting")]
+        public MeshFilter planeMeshFilter;
+
         [SerializeField]
         private Terrain _terrain;
 
@@ -40,6 +44,12 @@ namespace Biocrowds.Core
             get { return _dimension; }
         }
 
+        [SerializeField]
+        private Vector2 _offset = new Vector2(0.0f, 0.0f);
+        public Vector2 Offset
+        {
+            get { return _offset; }
+        }
         //number of agents in the scene
         [SerializeField]
         private int _maxAgents = 30;
@@ -85,6 +95,25 @@ namespace Biocrowds.Core
             _newAgentID = 0;
             if (spawnAreas.Count == 0)
                 spawnAreas = FindObjectsOfType<SpawnArea>().ToList();
+
+            if (planeMeshFilter != null)
+            {
+                if (planeMeshFilter.name != "Plane")
+                    Debug.LogWarning("PlaneMeshFilter Mesh isn't a Plane. " +
+                        "The difference in scale may cause unintended behavior.");
+
+                _dimension = new Vector2(Mathf.Ceil(planeMeshFilter.transform.localScale.x * 10f),
+                    Mathf.Ceil(planeMeshFilter.transform.localScale.z * 10f));
+                _dimension.x += _dimension.x % 2;
+                _dimension.y += _dimension.y % 2;
+
+                _offset = new Vector2(Mathf.Round(planeMeshFilter.transform.position.x),
+                    Mathf.Round(planeMeshFilter.transform.position.z));
+                _offset.x -= (_dimension.x / 2f);
+                _offset.y -= (_dimension.y / 2f);
+
+                planeMeshFilter.gameObject.SetActive(false);
+            }
         }
 
         public void LoadWorld()
@@ -99,6 +128,9 @@ namespace Biocrowds.Core
 
             //change terrain size according informed
             _terrain.terrainData.size = new Vector3(_dimension.x, _terrain.terrainData.size.y, _dimension.y);
+            _terrain.transform.position = new Vector3(_offset.x, _terrain.transform.position.y, _offset.y);
+
+            GameObjectUtility.SetStaticEditorFlags(_terrain.gameObject, StaticEditorFlags.NavigationStatic);
 
             //create all cells based on dimension
             yield return StartCoroutine(CreateCells());
@@ -108,8 +140,8 @@ namespace Biocrowds.Core
 
             //create our agents
             yield return StartCoroutine(CreateAgents());
-
             //build the navmesh at runtime
+            UnityEditor.AI.NavMeshBuilder.BuildNavMesh();
             //NavMeshBuilder.BuildNavMesh();
 
             //wait a little bit to start moving
@@ -121,13 +153,17 @@ namespace Biocrowds.Core
         private IEnumerator CreateCells()
         {
             Transform cellPool = new GameObject("Cells").transform;
+            Vector3 _spawnPos = new Vector3();
 
             for (int i = 0; i < _dimension.x / 2; i++) //i + agentRadius * 2
             {
                 for (int j = 0; j < _dimension.y / 2; j++) // j + agentRadius * 2
                 {
                     //instantiante a new cell
-                    Cell newCell = Instantiate(_cellPrefab, new Vector3(1.0f + (i * 2.0f), 0.0f, 1.0f + (j * 2.0f)), Quaternion.Euler(90.0f, 0.0f, 0.0f), cellPool);
+                    _spawnPos.x = (1.0f + (i * 2.0f)) + _offset.x;
+                    _spawnPos.z = (1.0f + (j * 2.0f)) + _offset.y;
+
+                    Cell newCell = Instantiate(_cellPrefab, _spawnPos, Quaternion.Euler(90.0f, 0.0f, 0.0f), cellPool);
 
                     //change its name
                     newCell.name = "Cell [" + i + "][" + j + "]";
