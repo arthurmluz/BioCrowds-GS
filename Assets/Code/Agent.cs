@@ -93,7 +93,7 @@ namespace Biocrowds.Core
 
             _goalPosition = Goal.transform.position;
             _dirAgentGoal = _goalPosition - transform.position;
-            _visualAgent.Initialize(transform.position, this);
+            if (_visualAgent != null) _visualAgent.Initialize(transform.position, this);
             //cache world info
             _totalX = Mathf.FloorToInt(_world.Dimension.x / 2.0f) - 1;
             _totalZ = Mathf.FloorToInt(_world.Dimension.y / 2.0f);
