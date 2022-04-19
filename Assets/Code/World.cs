@@ -17,6 +17,9 @@ namespace Biocrowds.Core
 {
     public class World : MonoBehaviour
     {
+        [Header("Simulation Configuration")]
+        public SimulationConfiguration.MarkerSpawnMethod markerSpawnMethod;
+
         [SerializeField] private float SIMULATION_TIME_STEP = 0.02f;
 
         [SerializeField] private float MAX_AGENTS = 0;
@@ -30,6 +33,7 @@ namespace Biocrowds.Core
         [SerializeField] private float AUXIN_DENSITY = 0.50f;
 
         [SerializeField] private float GOAL_DISTANCE_THRESHOLD = 1.0f;
+
 
         [Header("Terrain Setting")]
         public MeshFilter planeMeshFilter;
@@ -86,6 +90,9 @@ namespace Biocrowds.Core
             get { return _auxins; }
         }
 
+        [SerializeField]
+        private MarkerSpawner _markerSpawner = null;
+
 
         //max auxins on the ground
         private bool _isReady;
@@ -118,6 +125,9 @@ namespace Biocrowds.Core
 
         public void LoadWorld()
         {
+            var markerSpawnerMethods = transform.GetComponentsInChildren<MarkerSpawner>();
+            _markerSpawner = markerSpawnerMethods.First(p => p.spawnMethod == markerSpawnMethod);
+
             StartCoroutine(SetupWorld());
         }
 
@@ -130,13 +140,18 @@ namespace Biocrowds.Core
             _terrain.terrainData.size = new Vector3(_dimension.x, _terrain.terrainData.size.y, _dimension.y);
             _terrain.transform.position = new Vector3(_offset.x, _terrain.transform.position.y, _offset.y);
 
+
+
             GameObjectUtility.SetStaticEditorFlags(_terrain.gameObject, StaticEditorFlags.NavigationStatic);
 
             //create all cells based on dimension
             yield return StartCoroutine(CreateCells());
 
+            yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
+            Debug.Log(_auxins.Count/_cells.Count);
+
             //populate cells with auxins
-            yield return StartCoroutine(DartThrowing());
+            //yield return StartCoroutine(DartThrowing());
 
             //create our agents
             yield return StartCoroutine(CreateAgents());

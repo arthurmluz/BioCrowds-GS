@@ -30,6 +30,7 @@ namespace Biocrowds.Core
         {
             _meshRenderer.enabled = _show;
         }
+
         private void Update()
         {
             count = _auxins.Count;
