@@ -140,9 +140,12 @@ namespace Biocrowds.Core
             _terrain.terrainData.size = new Vector3(_dimension.x, _terrain.terrainData.size.y, _dimension.y);
             _terrain.transform.position = new Vector3(_offset.x, _terrain.transform.position.y, _offset.y);
 
-
-
             GameObjectUtility.SetStaticEditorFlags(_terrain.gameObject, StaticEditorFlags.NavigationStatic);
+
+            //build the navmesh at runtime
+            //NavMeshBuilder.BuildNavMesh();
+            UnityEditor.AI.NavMeshBuilder.BuildNavMesh();
+
 
             //create all cells based on dimension
             yield return StartCoroutine(CreateCells());
@@ -155,9 +158,6 @@ namespace Biocrowds.Core
 
             //create our agents
             yield return StartCoroutine(CreateAgents());
-            //build the navmesh at runtime
-            UnityEditor.AI.NavMeshBuilder.BuildNavMesh();
-            //NavMeshBuilder.BuildNavMesh();
 
             //wait a little bit to start moving
             yield return new WaitForSeconds(1.0f);

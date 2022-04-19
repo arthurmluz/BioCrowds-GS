@@ -2,6 +2,7 @@ using Biocrowds.Core;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class RegularGridMarkerSpawner : MarkerSpawner
 {
@@ -31,9 +32,9 @@ public class RegularGridMarkerSpawner : MarkerSpawner
             {
                 Vector3 targetPosition = new Vector3(_x, 0f, _z);
 
-                if (HasObstacleNearby(targetPosition))
+                if (HasObstacleNearby(targetPosition) || !IsOnNavmesh(targetPosition))
                     continue;
-
+                
                 // Creates new Marker and sets its data
                 Auxin newMarker = Instantiate(auxinPrefab, targetPosition, Quaternion.identity, _auxinsContainer);
                 newMarker.transform.localScale = Vector3.one * MarkerRadius;

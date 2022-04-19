@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Biocrowds.Core;
+using UnityEngine.AI;
 
 public abstract class MarkerSpawner : MonoBehaviour
 {
@@ -34,5 +35,10 @@ public abstract class MarkerSpawner : MonoBehaviour
     {
         Collider[] hitColliders = Physics.OverlapSphere(test, MarkerRadius + 0.1f, 1 << LayerMask.NameToLayer("Obstacle"));
         return hitColliders.Length > 0 ? true : false;
+    }
+
+    protected bool IsOnNavmesh(Vector3 test)
+    {
+        return NavMesh.SamplePosition(test, out NavMeshHit hit, 0.05f, 1 << NavMesh.GetAreaFromName("Walkable"));
     }
 }

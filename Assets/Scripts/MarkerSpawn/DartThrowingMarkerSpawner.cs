@@ -39,7 +39,8 @@ public class DartThrowingMarkerSpawner : MarkerSpawner
             float z = Random.Range(-cellHalfSize, cellHalfSize);
             Vector3 targetPosition = new Vector3(x, 0f, z) + cell.transform.position;
 
-            if (HasObstacleNearby(targetPosition) || HasMarkersNearby(targetPosition, cell.Auxins))
+            if (HasObstacleNearby(targetPosition) || HasMarkersNearby(targetPosition, cell.Auxins) 
+                || !IsOnNavmesh(targetPosition))
             {
                 _tries++;
                 i--;
