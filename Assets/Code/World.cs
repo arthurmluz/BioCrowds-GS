@@ -27,13 +27,12 @@ namespace Biocrowds.Core
         [SerializeField] private float AGENT_RADIUS = 1.00f;
 
         //radius for auxin collide
-        [SerializeField] private float AUXIN_RADIUS = 0.1f;
+        [SerializeField] private float AUXIN_RADIUS = 0.15f;
 
         //density
-        [SerializeField] private float AUXIN_DENSITY = 0.50f;
+        [SerializeField] private float AUXIN_DENSITY = 0.20f;
 
         [SerializeField] private float GOAL_DISTANCE_THRESHOLD = 1.0f;
-
 
         [Header("Terrain Setting")]
         public MeshFilter planeMeshFilter;
@@ -68,6 +67,10 @@ namespace Biocrowds.Core
         [SerializeField]
         private Auxin _auxinPrefab;
 
+        private Dictionary<SpawnArea, float> avgElapsedTimePerArea = new Dictionary<SpawnArea, float>();
+        private Dictionary<SpawnArea, int> peoplePerArea = new Dictionary<SpawnArea, int>();
+        private int countAreasFinished = 0;
+        private int MAX_AGENTS_PER_SIMULATION = 5;
 
         [SerializeField]
         private List<Agent> _agents = new List<Agent>();
@@ -99,9 +102,12 @@ namespace Biocrowds.Core
 
         private void Awake()
         {
+            Random.seed = 43;
+
             _newAgentID = 0;
             if (spawnAreas.Count == 0)
                 spawnAreas = FindObjectsOfType<SpawnArea>().ToList();
+                RandomizeSpawnAreas();
 
             if (planeMeshFilter != null)
             {
@@ -131,6 +137,24 @@ namespace Biocrowds.Core
             StartCoroutine(SetupWorld());
         }
 
+        public void RandomizeSpawnAreas() {
+            for(int i = 0; i < spawnAreas.Count; i++) {
+                float x = Random.Range(4.5f, 43);
+                float z = Random.Range(0, 28);
+
+                Collider[] hitColliders = Physics.OverlapSphere(new Vector3(x, 0f, z), AUXIN_RADIUS + 0.45f, 1 << LayerMask.NameToLayer("Obstacle"));
+                Debug.Log(hitColliders.Length);
+                if(hitColliders.Length != 0){
+                    i--;
+                    continue;
+                }
+
+                spawnAreas[i].transform.position = new Vector3(x, 0, z);
+                spawnAreas[i].cycleLenght = Random.Range(10, 30);
+                spawnAreas[i].initialNumberOfAgents = 1;
+            }
+        }
+
         // Use this for initialization
         IEnumerator SetupWorld()
         {
@@ -150,11 +174,11 @@ namespace Biocrowds.Core
             //create all cells based on dimension
             yield return StartCoroutine(CreateCells());
 
-            yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
+            //yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
             Debug.Log(_auxins.Count/_cells.Count);
 
             //populate cells with auxins
-            //yield return StartCoroutine(DartThrowing());
+            yield return StartCoroutine(DartThrowing());
 
             //create our agents
             yield return StartCoroutine(CreateAgents());
@@ -228,7 +252,7 @@ namespace Biocrowds.Core
                         float distanceAASqr = (new Vector3(x, 0f, z) - allAuxinsInCell[j].Position).sqrMagnitude;
 
                         //if it is too near no need to add another
-                        if (distanceAASqr < AUXIN_RADIUS * AUXIN_RADIUS)
+                        if (distanceAASqr < AUXIN_RADIUS )
                         {
                             createAuxin = false;
                             break;
@@ -243,7 +267,7 @@ namespace Biocrowds.Core
                         //createAuxin = NavMesh.Raycast(new Vector3(x, 2f, z), new Vector3(x, -2f, z), out hit, 1 << NavMesh.GetAreaFromName("Walkable")); //NavMesh.GetAreaFromName("Walkable")); // NavMesh.AllAreas);
                         //createAuxin = NavMesh.SamplePosition(new Vector3(x, 0.0f, z), out hit, 0.1f, 1 << NavMesh.GetAreaFromName("Walkable"));
                         //bool isBlocked = _obstacleCollider.bounds.Contains(new Vector3(x, 0.0f, z));
-                        Collider[] hitColliders = Physics.OverlapSphere(new Vector3(x, 0f, z), AUXIN_RADIUS + 0.1f, 1 << LayerMask.NameToLayer("Obstacle"));
+                        Collider[] hitColliders = Physics.OverlapSphere(new Vector3(x, 0f, z), AUXIN_RADIUS + 0.35f, 1 << LayerMask.NameToLayer("Obstacle"));
                         createAuxin = (hitColliders.Length == 0);
                     }
 
@@ -387,8 +411,19 @@ namespace Biocrowds.Core
                 //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)
 
 
-                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal())
+                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal()) {
                     _agentsToRemove.Add(_agents[i]);
+                    calculateAvgElapsedTime(_agents[i]);
+                }
+            }
+
+            if (countAreasFinished == spawnAreas.Count) {
+                _agentsToRemove.AddRange(_agents);
+                addDataToFile();
+                RandomizeSpawnAreas();
+                countAreasFinished = 0;
+                avgElapsedTimePerArea = new Dictionary<SpawnArea, float>();
+                peoplePerArea = new Dictionary<SpawnArea, int>();
             }
 
             foreach(Agent a in _agentsToRemove)
@@ -434,6 +469,7 @@ namespace Biocrowds.Core
             newAgent.removeWhenGoalReached = _removeWhenGoalReached;
             newAgent.World = this;
             _agents.Add(newAgent);
+            Debug.Log("SpawnNewAgent sem area");
         }
 
         private void SpawnNewAgentInArea(SpawnArea _area, bool _isInitialSpawn)
@@ -445,12 +481,14 @@ namespace Biocrowds.Core
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
             newAgent.goalDistThreshold = GOAL_DISTANCE_THRESHOLD;
+            // first spawn is here, after that the next spawns goes to the else
             if (_isInitialSpawn)
             {
                 newAgent.Goal = _area.initialAgentsGoalList[0];  //agent goal
                 newAgent.goalsList = _area.initialAgentsGoalList;
                 newAgent.removeWhenGoalReached = _area.initialRemoveWhenGoalReached;
                 newAgent.goalsWaitList = _area.initialWaitList;
+                newAgent.spawnArea = _area;
             }
             else
             {
@@ -458,6 +496,7 @@ namespace Biocrowds.Core
                 newAgent.goalsList = _area.repeatingGoalList;
                 newAgent.removeWhenGoalReached = _area.repeatingRemoveWhenGoalReached;
                 newAgent.goalsWaitList = _area.repeatingWaitList;
+                newAgent.spawnArea = _area;
             }
             newAgent.World = this;
             _agents.Add(newAgent);
@@ -478,6 +517,29 @@ namespace Biocrowds.Core
         {
             foreach (Cell _c in Cells)
                 _c.ShowMesh(p_enable);
+        }
+
+        public void calculateAvgElapsedTime(Agent agent) {
+            if (avgElapsedTimePerArea.ContainsKey(agent.spawnArea)) {
+                peoplePerArea[agent.spawnArea] += 1;
+                avgElapsedTimePerArea[agent.spawnArea] += (agent._elapsedTime);
+            } else {
+                avgElapsedTimePerArea[agent.spawnArea] = agent._elapsedTime;
+                peoplePerArea[agent.spawnArea] = 1;
+            }
+            Debug.Log("SpawnArea: " + agent.spawnArea + " pessoas: " + peoplePerArea[agent.spawnArea]);
+            if (peoplePerArea[agent.spawnArea] >= MAX_AGENTS_PER_SIMULATION) {
+                if (agent.spawnArea.cycleLenght < 100) {
+                    countAreasFinished++;
+                    agent.spawnArea.cycleLenght *= 1000000;
+                }
+            }
+        }
+
+        public void addDataToFile() {
+            //string arquivo = 'C:\\Users\\arthu\\Downloads\\BioCrowds-GS\\dataset.txt';
+            //StreamWriter writer = new StreamWriter(filePath);
+            //writer.WriteLine(",OnlyX");
         }
     }
 }
