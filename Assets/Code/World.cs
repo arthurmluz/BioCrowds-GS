@@ -12,6 +12,8 @@ using UnityEditor.AI;
 using System.Collections;
 using UnityEngine.AI;
 using System.Linq;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 namespace Biocrowds.Core
 {
@@ -69,12 +71,18 @@ namespace Biocrowds.Core
         private Auxin _auxinPrefab;
 
 
+        private Dictionary<SpawnArea, float> avgElapsedTimePerArea = new Dictionary<SpawnArea, float>();
+        private Dictionary<SpawnArea, int> peoplePerArea = new Dictionary<SpawnArea, int>();
+
+        private bool recalculatePoptimes = true;
+
         [SerializeField]
         private List<Agent> _agents = new List<Agent>();
         List<Cell> _cells = new List<Cell>();
         List<Auxin> _auxins = new List<Auxin>();
 
         public List<SpawnArea> spawnAreas;
+        private SpawnArea spawnBlockers;
 
         [SerializeField]
         private Transform _agentsContainer;
@@ -93,15 +101,17 @@ namespace Biocrowds.Core
         [SerializeField]
         private MarkerSpawner _markerSpawner = null;
 
-
         //max auxins on the ground
         private bool _isReady;
 
         private void Awake()
         {
             _newAgentID = 0;
-            if (spawnAreas.Count == 0)
+            if (spawnAreas.Count == 0) {
                 spawnAreas = FindObjectsOfType<SpawnArea>().ToList();
+                spawnBlockers = spawnAreas.Where(x => x.name == "blockers").FirstOrDefault();
+                spawnAreas.Remove(spawnBlockers);
+            }
 
             if (planeMeshFilter != null)
             {
@@ -150,11 +160,11 @@ namespace Biocrowds.Core
             //create all cells based on dimension
             yield return StartCoroutine(CreateCells());
 
-            yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
+            //yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
             Debug.Log(_auxins.Count/_cells.Count);
 
             //populate cells with auxins
-            //yield return StartCoroutine(DartThrowing());
+            yield return StartCoroutine(DartThrowing());
 
             //create our agents
             yield return StartCoroutine(CreateAgents());
@@ -313,19 +323,8 @@ namespace Biocrowds.Core
             if (!_isReady)
                 return;
 
-            foreach (SpawnArea _area in spawnAreas)
-            {
-                _area.UpdateSpawnCounter(SIMULATION_TIME_STEP);
-                if (_area.CycleReady)
-                {
-                    for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
-                    {
-                        if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
-                            SpawnNewAgentInArea(_area, false);
-                    }
-                }
-                _area.ResetCycleReady();
-            }
+            UpdateSpawnAreas();
+            verifyUpdateBlockers();
 
             // Update de Navmesh for each agent 
             for (int i = 0; i < _agents.Count; i++)
@@ -335,8 +334,6 @@ namespace Biocrowds.Core
             for (int i = 0; i < _cells.Count; i++)
                 for (int j = 0; j < _cells[i].Auxins.Count; j++)
                     _cells[i].Auxins[j].ResetAuxin();
-
-           
 
             //find nearest auxins for each agent
             for (int i = 0; i < _agents.Count; i++)
@@ -355,6 +352,7 @@ namespace Biocrowds.Core
             3 - calculate speed vector 
             4 - step
             */
+
 
             List<Agent> _agentsToRemove = new List<Agent>();
             bool _showAgentAuxingVector = SceneController.ShowAuxinVectors;
@@ -387,8 +385,12 @@ namespace Biocrowds.Core
                 //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)
 
 
-                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal())
+                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal()) {
                     _agentsToRemove.Add(_agents[i]);
+                    calculateAvgElapsedTime(_agents[i]);
+                    calculateSpawnTimeCicle();
+                }
+
             }
 
             foreach(Agent a in _agentsToRemove)
@@ -405,6 +407,84 @@ namespace Biocrowds.Core
             
         }
 
+        public void verifyUpdateBlockers() {
+            if (Input.GetKeyDown(KeyCode.Equals)) {
+                spawnBlockers.quantitySpawnedEachCycle += 1;
+                Debug.Log("Increasing spawnBlockers:" + spawnBlockers.quantitySpawnedEachCycle);
+            }
+            if (Input.GetKeyDown(KeyCode.Minus)) {
+                spawnBlockers.quantitySpawnedEachCycle -= 1;
+                Debug.Log("Decreasing spawnBlockers:" + spawnBlockers.quantitySpawnedEachCycle);
+            }
+
+            if (Input.GetKeyDown(KeyCode.Period)) {
+                spawnBlockers.cycleLength += 1;
+                Debug.Log("Increasing spawnBlockers cycle:" + spawnBlockers.cycleLength);
+            }
+            if (Input.GetKeyDown(KeyCode.Comma)) {
+                spawnBlockers.cycleLength -= 1;
+                Debug.Log("Decreasing spawnBlockers cycle:" + spawnBlockers.cycleLength);
+            }
+
+        }
+
+        public void UpdateSpawnAreas(){
+            foreach (SpawnArea _area in spawnAreas)
+            {
+                _area.UpdateSpawnCounter(SIMULATION_TIME_STEP);
+                if (_area.CycleReady)
+                {
+                    for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
+                    {
+                        if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
+                            SpawnNewAgentInArea(_area, false);
+                    }
+                }
+                _area.ResetCycleReady();
+            }
+
+            spawnBlockers.UpdateSpawnCounter(SIMULATION_TIME_STEP);
+            if (spawnBlockers.CycleReady)
+            {
+                for (int i = 0; i < spawnBlockers.quantitySpawnedEachCycle; i++)
+                {
+                    if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
+                        SpawnNewAgentInArea(spawnBlockers, false);
+                }
+            }
+            spawnBlockers.ResetCycleReady();
+
+        }
+
+        public void calculateAvgElapsedTime(Agent agent) {
+            if (agent.spawnArea.name == "SpawnAreaPrefab")
+             return;
+            if (avgElapsedTimePerArea.ContainsKey(agent.spawnArea)) {
+                peoplePerArea[agent.spawnArea] += 1;
+                avgElapsedTimePerArea[agent.spawnArea] += (agent._elapsedTime);
+                //Debug.Log(agent._elapsedTime);
+            } else {
+                avgElapsedTimePerArea[agent.spawnArea] = agent._elapsedTime;
+                peoplePerArea[agent.spawnArea] = 1;
+            }
+            Debug.Log("SpawnArea: " + agent.spawnArea + " pessoas: " + peoplePerArea[agent.spawnArea] + " tempo: " + avgElapsedTimePerArea[agent.spawnArea]);
+        }
+
+        public void calculateSpawnTimeCicle() {
+            if (!recalculatePoptimes || spawnAreas.Count != avgElapsedTimePerArea.Count) return;
+            recalculatePoptimes = false;
+            
+            foreach(SpawnArea area in spawnAreas) {
+                Poptime.addTimeDistanceOrigin(avgElapsedTimePerArea[area]);
+            }
+            Poptime.calculaPoptimes();
+            foreach(SpawnArea area in spawnAreas) {
+                area.cycleLength = Poptime.getTimeDistanceOriginByDistance(avgElapsedTimePerArea[area]);
+                area.quantitySpawnedEachCycle = 1;
+            }
+            Poptime.clear();
+            
+        }
         private Cell GetClosestCellToPoint (Vector3 point)
         {
             float _minDist = Vector3.Distance(point, _cells[0].transform.position);
@@ -459,6 +539,8 @@ namespace Biocrowds.Core
                 newAgent.removeWhenGoalReached = _area.repeatingRemoveWhenGoalReached;
                 newAgent.goalsWaitList = _area.repeatingWaitList;
             }
+
+            newAgent.spawnArea = _area;
             newAgent.World = this;
             _agents.Add(newAgent);
         }

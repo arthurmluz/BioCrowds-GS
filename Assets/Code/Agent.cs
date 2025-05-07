@@ -39,6 +39,8 @@ namespace Biocrowds.Core
 
         public float goalDistThreshold = 1.0f;
 
+        public SpawnArea spawnArea;
+
         //list with all auxins in his personal space
         [SerializeField]
         private List<Auxin> _auxins = new List<Auxin>();
@@ -72,7 +74,7 @@ namespace Biocrowds.Core
         public VisualAgent _visualAgent;
 
         //time elapsed (to calculate path just between an interval of time)
-        private float _elapsedTime;
+        public float _elapsedTime;
         //auxins distance vector from agent
         public List<Vector3> _distAuxin;
 
