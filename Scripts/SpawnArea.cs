@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
+
 
 public class SpawnArea : MonoBehaviour
 {
@@ -42,6 +44,14 @@ public class SpawnArea : MonoBehaviour
             _collider = GetComponent<Collider>();
         if (_meshRenderer == null)
             _meshRenderer = GetComponent<MeshRenderer>();
+
+        var obstacle = GetComponent<NavMeshObstacle>();
+        if (obstacle == null)
+            obstacle = gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+
+        obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+        obstacle.carving = true;
+        obstacle.carveOnlyStationary = false;
 
         cycleCounter = 0.0f;
         cycleReady = false;
