@@ -40,6 +40,7 @@ public class DartThrowingMarkerSpawner : MarkerSpawner
 
             // Creates new Marker and sets its data
             Auxin newMarker = Instantiate(auxinPrefab, targetPosition, Quaternion.identity, _auxinsContainer);
+            SetLayerRecursively(newMarker.gameObject, LayerMask.NameToLayer("CellsHidden"));
             newMarker.transform.localScale = Vector3.one * MarkerRadius;
             newMarker.name = "Marker [" + cellIndex + "][" + i + "]";
             newMarker.Cell = cell;

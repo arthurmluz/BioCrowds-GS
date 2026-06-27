@@ -51,4 +51,14 @@ public abstract class MarkerSpawner : MonoBehaviour
     {
         return IsOnNavmesh(test, out Vector3 v, snap);
     }
+
+    protected void SetLayerRecursively(GameObject target, int layer)
+    {
+        if (target == null || layer < 0)
+            return;
+
+        target.layer = layer;
+        foreach (Transform child in target.transform)
+            SetLayerRecursively(child.gameObject, layer);
+    }
 }

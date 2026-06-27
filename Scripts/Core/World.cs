@@ -203,6 +203,7 @@ namespace Biocrowds.Core
                     _spawnPos.z = (1.0f + (j * 2.0f)) + _offset.y;
 
                     Cell newCell = Instantiate(_cellPrefab, _spawnPos, Quaternion.Euler(90.0f, 0.0f, 0.0f), cellPool);
+                    SetLayerRecursively(newCell.gameObject, LayerMask.NameToLayer("CellsHidden"));
 
                     //change its name
                     newCell.name = "Cell [" + i + "][" + j + "]";
@@ -469,8 +470,10 @@ namespace Biocrowds.Core
             newAgent.name = "Agent [" + GetNewAgentID() + "]";  //name
             newAgent.CurrentCell = GetClosestCellToPoint(_pos);
             newAgent.agentRadius = AGENT_RADIUS;  //agent radius
-            newAgent.Goal = _goalList[0];  //agent goal
-            newAgent.goalsList = _goalList;
+            GameObject nearestGoal = GetNearestGoal(_pos, _goalList);
+            newAgent.Goal = nearestGoal ?? _goalList[0];  //agent goal
+            newAgent.goalsList = BuildSingleGoalList(newAgent.Goal);
+            newAgent.goalsWaitList = BuildSingleWaitList();
             newAgent.removeWhenGoalReached = _removeWhenGoalReached;
             newAgent.World = this;
             _agents.Add(newAgent);
@@ -515,19 +518,23 @@ namespace Biocrowds.Core
             newAgent.goalDistThreshold = GOAL_DISTANCE_THRESHOLD;
             if (_isInitialSpawn)
             {
-                newAgent.Goal = _area.initialAgentsGoalList[0];  //agent goal
-                newAgent.goalsList = _area.initialAgentsGoalList;
+                GameObject nearestGoal = GetNearestGoal(_pos, _area.initialAgentsGoalList);
+                newAgent.Goal = nearestGoal ?? _area.initialAgentsGoalList[0];  //agent goal
+                newAgent.goalsList = BuildSingleGoalList(newAgent.Goal);
                 newAgent.removeWhenGoalReached = _area.initialRemoveWhenGoalReached;
-                newAgent.goalsWaitList = _area.initialWaitList;
+                newAgent.goalsWaitList = BuildSingleWaitList();
             }
             else
             {
-                newAgent.Goal = _area.repeatingGoalList[0];  //agent goal
-                newAgent.goalsList = _area.repeatingGoalList;
+                GameObject nearestGoal = GetNearestGoal(_pos, _area.repeatingGoalList);
+                newAgent.Goal = nearestGoal ?? _area.repeatingGoalList[0];  //agent goal
+                newAgent.goalsList = BuildSingleGoalList(newAgent.Goal);
                 newAgent.removeWhenGoalReached = _area.repeatingRemoveWhenGoalReached;
-                newAgent.goalsWaitList = _area.repeatingWaitList;
-                if(_area.limitRepeatingSpawn)
+                newAgent.goalsWaitList = BuildSingleWaitList();
+                if(_area.limitRepeatingSpawn) {
                     _area.quantityLimitToSpawn--;
+                    Debug.Log("Area " + _area.name + " has " + _area.quantityLimitToSpawn + " spawns left.");
+                }
             }
             newAgent.World = this;
             newAgent.Initialize();
@@ -543,6 +550,40 @@ namespace Biocrowds.Core
             return _newAgentID - 1;
         }
 
+        private GameObject GetNearestGoal(Vector3 position, List<GameObject> goals)
+        {
+            if (goals == null || goals.Count == 0)
+                return null;
+
+            GameObject nearestGoal = null;
+            float nearestDistanceSqr = float.MaxValue;
+
+            foreach (GameObject goal in goals)
+            {
+                if (goal == null)
+                    continue;
+
+                float distanceSqr = (goal.transform.position - position).sqrMagnitude;
+                if (distanceSqr < nearestDistanceSqr)
+                {
+                    nearestDistanceSqr = distanceSqr;
+                    nearestGoal = goal;
+                }
+            }
+
+            return nearestGoal;
+        }
+
+        private List<GameObject> BuildSingleGoalList(GameObject goal)
+        {
+            return goal != null ? new List<GameObject> { goal } : new List<GameObject>();
+        }
+
+        private List<float> BuildSingleWaitList()
+        {
+            return new List<float> { 0f };
+        }
+
         public void ShowAuxinMeshes (bool p_enable)
         {
             foreach (Auxin _a in Auxins)
@@ -552,6 +593,16 @@ namespace Biocrowds.Core
         {
             foreach (Cell _c in Cells)
                 _c.ShowMesh(p_enable);
+        }
+
+        private void SetLayerRecursively(GameObject target, int layer)
+        {
+            if (target == null || layer < 0)
+                return;
+
+            target.layer = layer;
+            foreach (Transform child in target.transform)
+                SetLayerRecursively(child.gameObject, layer);
         }
     }
 }
