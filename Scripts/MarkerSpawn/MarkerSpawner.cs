@@ -52,6 +52,22 @@ public abstract class MarkerSpawner : MonoBehaviour
         return IsOnNavmesh(test, out Vector3 v, snap);
     }
 
+    protected bool IsInsideMarkerExclusionZone(Vector3 test)
+    {
+        World world = GetComponentInParent<World>();
+        if (world == null || world.MarkerExclusionZones == null || world.MarkerExclusionZones.Count == 0)
+            return false;
+
+        Vector2 position2D = new Vector2(test.x, test.z);
+        for (int i = 0; i < world.MarkerExclusionZones.Count; i++)
+        {
+            if (world.MarkerExclusionZones[i].Contains(position2D))
+                return true;
+        }
+
+        return false;
+    }
+
     protected void SetLayerRecursively(GameObject target, int layer)
     {
         if (target == null || layer < 0)

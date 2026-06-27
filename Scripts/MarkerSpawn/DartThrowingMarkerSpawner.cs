@@ -80,7 +80,8 @@ public class DartThrowingMarkerSpawner : MarkerSpawner
 
     private bool ValidPositionInCell(Cell cell, Vector3 position)
     {
-        return !HasObstacleNearby(position) &&
+         return !IsInsideMarkerExclusionZone(position) &&
+             !HasObstacleNearby(position) &&
                !HasMarkersNearby(position, cell.Auxins) &&
                IsOnNavmesh(position);
     }

@@ -4,6 +4,12 @@ using UnityEngine;
 
 public class SpawnArea : MonoBehaviour
 {
+    public enum SpawnSide
+    {
+        North,
+        South
+    }
+
     private Collider _collider;
     private MeshRenderer _meshRenderer;
 
@@ -21,6 +27,7 @@ public class SpawnArea : MonoBehaviour
     public bool repeatingRemoveWhenGoalReached;
     public List<GameObject> repeatingGoalList;
     public List<float> repeatingWaitList;
+    public SpawnSide spawnSide = SpawnSide.North;
     private float cycleCounter = 0.0f;
     private bool cycleReady = false;
 
@@ -70,18 +77,17 @@ public class SpawnArea : MonoBehaviour
         Vector3 point;
         if (_collider.enabled)
         {
-            point = new Vector3(
-                Random.Range(_collider.bounds.min.x, _collider.bounds.max.x),
-                height,
-                Random.Range(_collider.bounds.min.z, _collider.bounds.max.z)
-            );
+            float x = Random.Range(_collider.bounds.min.x, _collider.bounds.max.x);
+            float zOffset = Mathf.Max(0.01f, Mathf.Min(0.25f, _collider.bounds.size.z * 0.1f));
+            float z = spawnSide == SpawnSide.North ? _collider.bounds.max.z + zOffset : _collider.bounds.min.z - zOffset;
+            point = new Vector3(x, height, z);
         }
         else
         {   
-            point = new Vector3(transform.position.x + 0.5f * Random.Range(-transform.lossyScale.x, transform.lossyScale.x),
-                                height,
-                                transform.position.z + 0.5f * Random.Range(-transform.lossyScale.z, transform.lossyScale.z)
-            ); ;
+            float x = transform.position.x + 0.5f * Random.Range(-transform.lossyScale.x, transform.lossyScale.x);
+            float zOffset = Mathf.Max(0.01f, Mathf.Min(0.25f, transform.lossyScale.z * 0.1f));
+            float z = transform.position.z + (spawnSide == SpawnSide.North ? transform.lossyScale.z * 0.5f + zOffset : -transform.lossyScale.z * 0.5f - zOffset);
+            point = new Vector3(x, height, z);
         }
         
         return _collider.ClosestPoint(point);

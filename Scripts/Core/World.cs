@@ -77,6 +77,8 @@ namespace Biocrowds.Core
         [SerializeField] protected List<SpawnArea> spawnAreas;
         public List<SpawnArea> Areas => spawnAreas;
 
+        public List<Rect> MarkerExclusionZones { get; set; } = new List<Rect>();
+
         [SerializeField]
         protected Transform _agentsContainer;
         protected int _newAgentID = 0;

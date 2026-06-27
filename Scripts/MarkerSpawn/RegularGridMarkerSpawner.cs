@@ -38,8 +38,8 @@ public class RegularGridMarkerSpawner : MarkerSpawner
             {
                 Vector3 targetPosition = new Vector3(_x, 0f, _z);
 
-                if (HasObstacleNearby(targetPosition) || !IsOnNavmesh(targetPosition, out targetPosition, snapToNavmesh))
-                    continue;
+                    if (IsInsideMarkerExclusionZone(targetPosition) || HasObstacleNearby(targetPosition) || !IsOnNavmesh(targetPosition, out targetPosition, snapToNavmesh))
+                        continue;
                 
                 if(randomIntensity > 0)
                 {
