@@ -13,9 +13,9 @@ public class SceneController : MonoBehaviour
     public static bool ShowCells { get; protected set; } = true;
     public static bool ShowAuxins { get; protected set; } = true;
     public static bool ShowSpawnAreas { get; protected set; } = true;
-    public static bool ShowAuxinVectors { get; protected set; } = true;
+    public static bool ShowAuxinVectors { get; protected set; } = false;
 
-    public static bool ShowNavMeshCorners { get; protected set; } = true;
+    public static bool ShowNavMeshCorners { get; protected set; } = false;
 
     [Header("Render Settings")]
     public bool _showCells;
@@ -27,7 +27,8 @@ public class SceneController : MonoBehaviour
     private void Awake()
     {
         ShowCells = _showCells;
-        ShowAuxins = _showAuxins;
+        _showAuxins = false;
+        ShowAuxins = false;
         ShowSpawnAreas = _showSpawnAreas;
         ShowAuxinVectors = _showAuxinVector;
         ShowNavMeshCorners = _showNavMeshCorners;

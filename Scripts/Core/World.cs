@@ -65,7 +65,6 @@ namespace Biocrowds.Core
         [SerializeField]
         protected Cell _cellPrefab;
 
-        [SerializeField]
         protected Auxin _auxinPrefab;
 
 
@@ -101,7 +100,8 @@ namespace Biocrowds.Core
         public bool Ready => _isReady;
 
         protected bool _isFinished;
-        public bool Finished => _isFinished;        
+        public bool Finished => _isFinished;
+        public bool SimulationSkipped { get; set; }
         public System.Action OnAfterUpdate = null;
         public System.Action OnSimulationFinished = null;
         public System.Action<SpawnArea, Agent> OnAgentSpawned = null;
@@ -498,8 +498,12 @@ namespace Biocrowds.Core
 
         protected void SpawnNewAgentInArea(SpawnArea _area, bool _isInitialSpawn)
         {
-            // Get a random point to a random cell
-            Vector3 _pos = GetRandomPoinInArea(_area);
+            List<GameObject> goalList = _isInitialSpawn ? _area.initialAgentsGoalList : _area.repeatingGoalList;
+            if (!TryGetRandomPoinInArea(_area, goalList[0], out Vector3 _pos))
+            {
+                SimulationSkipped = true;
+                return;
+            }
 
             Agent newAgent = Instantiate(_agentPrefabList[Random.Range(0, _agentPrefabList.Count)], 
                 _pos, Quaternion.identity, _agentsContainer);
@@ -539,43 +543,71 @@ namespace Biocrowds.Core
             SpawnArea area = goal.GetComponentInChildren<SpawnArea>();
             foreach (Agent agent in _area.teleportBuffer)
             {
-                agent.transform.position = area != null ? GetRandomPoinInArea(area) 
-                                                        : goal.transform.position;
+                if (area != null)
+                {
+                    if (!TryGetRandomPoinInArea(area, goal, out Vector3 teleportPosition))
+                    {
+                        SimulationSkipped = true;
+                        Debug.LogWarning($"Skipping entire simulation because teleport for area '{area.name}' has no reachable position for goal '{goal.name}'.");
+                        continue;
+                    }
+
+                    agent.transform.position = teleportPosition;
+                }
+                else
+                {
+                    agent.transform.position = goal.transform.position;
+                }
                 agent.wasTeleported = true;
             }
             _area.teleportBuffer.Clear();
         }
 
-        protected Vector3 GetRandomPoinInArea(SpawnArea _area)
+        protected bool TryGetRandomPoinInArea(SpawnArea _area, GameObject goal, out Vector3 position)
         {
-            Vector3 _pos;
-            Cell c;
+            position = default;
             int oldSeed = Random.seed;
-            int tries = 0;
-            bool found = false;
-            do
-            {
-                tries++;
-                // while cell is not traversable, randomize another cell
-                _pos = _area.GetRandomPoint();
-                c = GetClosestCellToPoint(_pos);
-                if (c.Auxins.Count <= 0) continue;
+            List<Auxin> candidates = Auxins
+                .Where(auxin => _area.IsInsideArea(auxin.Position))
+                .OrderBy(_ => Random.value)
+                .ToList();
+            candidates.AddRange(Auxins
+                .Where(auxin => !_area.IsInsideArea(auxin.Position))
+                .OrderBy(auxin => Vector3.Distance(auxin.Position, _area.transform.position)));
 
-                // get an auxin that it is fully inside the area
-                _pos = c.Auxins.OrderBy(x => (x.Position - _pos).sqrMagnitude).First().Position;
-                found = true;
-            } while (!found && tries < 500);
+            Vector3 goalPosition = goal.transform.position;
+            Collider goalCollider = goal.GetComponent<Collider>();
+            if (goalCollider != null)
+                goalPosition = goalCollider.ClosestPoint(goalPosition);
+
+            bool found = false;
+            foreach (Auxin auxin in candidates)
+            {
+                if (!UnityEngine.AI.NavMesh.SamplePosition(auxin.Position, out UnityEngine.AI.NavMeshHit startHit, AGENT_RADIUS, UnityEngine.AI.NavMesh.AllAreas) ||
+                    !UnityEngine.AI.NavMesh.SamplePosition(goalPosition, out UnityEngine.AI.NavMeshHit goalHit, 10f, UnityEngine.AI.NavMesh.AllAreas))
+                    continue;
+
+                UnityEngine.AI.NavMeshPath path = new UnityEngine.AI.NavMeshPath();
+                if (UnityEngine.AI.NavMesh.CalculatePath(startHit.position, goalHit.position, UnityEngine.AI.NavMesh.AllAreas, path) &&
+                    path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete)
+                {
+                    position = auxin.Position;
+                    found = true;
+                    break;
+                }
+            }
 
             // return seed to oldstate to not disrturb random sequentiation
             Random.InitState(oldSeed);
 
             if (!found)
             {
-                Debug.LogError("Could not find cells with auxins to get point in area");
-                throw new System.Exception("Could not find cells with auxins to get point in area");
+                SimulationSkipped = true;
+                Debug.LogWarning($"Could not find any reachable spawn position for area '{_area.name}' and goal '{goal.name}'. Skipping the entire simulation.");
+                return false;
             }
 
-            return _pos;
+            return true;
         }
 
         protected int GetNewAgentID()

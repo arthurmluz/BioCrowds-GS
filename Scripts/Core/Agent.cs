@@ -8,6 +8,7 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.AI;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -73,6 +74,7 @@ namespace Biocrowds.Core
         private int _totalZ;
 
         private NavMeshPath _navMeshPath = null;
+        private bool _pathFailureLogged;
 
         public VisualAgent _visualAgent;
 
@@ -87,7 +89,6 @@ namespace Biocrowds.Core
         private Vector3 _rotation; //orientation vector (movement)
         private Vector3 _goalPosition; //goal position
         private Vector3 _dirAgentGoal; //diff between goal and agent
-
         public int auxinCount;
 
         private void Start()
@@ -103,7 +104,7 @@ namespace Biocrowds.Core
 
             if (Goal != null)
             {
-                _goalPosition = Goal.transform.position;
+                _goalPosition = GetGoalPosition(Goal);
                 _dirAgentGoal = _goalPosition - transform.position;
             }
             if (_visualAgent != null) _visualAgent.Initialize(transform.position, this);
@@ -169,35 +170,99 @@ namespace Biocrowds.Core
 
         private void UpdateGoalPositionAndNavmesh()
         {
-            if (goalsList == null || goalIndex < 0 || goalIndex >= goalsList.Count)
-                return;
-
             _elapsedTime = 0.0f;
-            Transform g = goalsList[goalIndex].transform;
-            //calculate agent path
-            if (NavMesh.SamplePosition(transform.position, out NavMeshHit hit1, agentRadius           , NavMesh.AllAreas) &&
-                NavMesh.SamplePosition(g.position        , out NavMeshHit hit2, g.lossyScale.magnitude, NavMesh.AllAreas) &&
-                NavMesh.CalculatePath(hit1.position, hit2.position, NavMesh.AllAreas, _navMeshPath) )
-            { 
-                //update its goal if path is found
-                int pIndex = 1;
-                if (pIndex >= _navMeshPath.corners.Length)
-                    pIndex = _navMeshPath.corners.Length - 1;
-                _goalPosition = new Vector3(_navMeshPath.corners[pIndex].x, 0f, _navMeshPath.corners[pIndex].z);                
-                while(pIndex < _navMeshPath.corners.Length - 1 && Vector3.Distance(transform.position, _goalPosition) < goalDistThreshold)
+            GameObject currentGoal = goalsList != null && goalIndex >= 0 && goalIndex < goalsList.Count
+                ? goalsList[goalIndex]
+                : null;
+            Vector3 goalPosition = currentGoal != null ? GetGoalPosition(currentGoal) : transform.position;
+
+            bool pathFound = currentGoal != null && TryCalculatePath(currentGoal, out goalPosition);
+
+            if (!pathFound)
+            {
+                if (TryFindNearestBlockExit(out GameObject exitGoal, out Vector3 exitGoalPosition))
                 {
-                    // while the next position of the path is near enough, advance on it 
-                    pIndex++;
-                    _goalPosition = new Vector3(_navMeshPath.corners[pIndex].x, 0f, _navMeshPath.corners[pIndex].z);
+                    goalsList = new List<GameObject> { exitGoal };
+                    goalsWaitList = new List<float> { 0f };
+                    goalIndex = 0;
+                    Goal = exitGoal;
+                    goalPosition = exitGoalPosition;
+                    pathFound = true;
+
+                    if (!_pathFailureLogged)
+                    {
+                        string failedGoalName = currentGoal != null ? currentGoal.name : "<none>";
+                        Debug.LogWarning(
+                            $"Agent '{name}' has no complete path to '{failedGoalName}'. " +
+                            $"Routing to reachable block exit '{exitGoal.name}' instead.",
+                            this);
+                    }
+                }
+            }
+
+            if (!pathFound)
+            {
+                if (!_pathFailureLogged)
+                {
+                    string failedGoalName = currentGoal != null ? currentGoal.name : "<none>";
+                    Debug.LogWarning(
+                        $"Agent '{name}' has no complete path to '{failedGoalName}', and no reachable ExitBlock/BlockExit was found.",
+                        this);
                 }
 
+                _pathFailureLogged = true;
+                _goalPosition = goalPosition;
                 _dirAgentGoal = _goalPosition - transform.position;
+                return;
             }
-            else
+
+            _pathFailureLogged = false;
+
+            int pathIndex = Mathf.Min(1, _navMeshPath.corners.Length - 1);
+            _goalPosition = _navMeshPath.corners[pathIndex];
+            while (pathIndex < _navMeshPath.corners.Length - 1 &&
+                   Vector3.Distance(transform.position, _goalPosition) < goalDistThreshold)
             {
-                _goalPosition = goalsList[goalIndex].transform.position;
-                _dirAgentGoal = _goalPosition - transform.position;
+                pathIndex++;
+                _goalPosition = _navMeshPath.corners[pathIndex];
             }
+
+            _dirAgentGoal = _goalPosition - transform.position;
+        }
+
+        private bool TryFindNearestBlockExit(out GameObject exitGoal, out Vector3 exitGoalPosition)
+        {
+            exitGoal = null;
+            exitGoalPosition = transform.position;
+
+            IEnumerable<SpawnArea> blockExits = FindObjectsOfType<SpawnArea>()
+                .Where(exit => exit.name == "ExitBlock" || exit.name == "BlockExit")
+                .OrderBy(exit => (exit.transform.position - transform.position).sqrMagnitude);
+
+            foreach (SpawnArea exit in blockExits)
+            {
+                if (!TryCalculatePath(exit.gameObject, out Vector3 candidatePosition))
+                    continue;
+
+                exitGoal = exit.gameObject;
+                exitGoalPosition = candidatePosition;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryCalculatePath(GameObject goal, out Vector3 goalPosition)
+        {
+            goalPosition = GetGoalPosition(goal);
+
+            if (!NavMesh.SamplePosition(transform.position, out NavMeshHit agentHit, agentRadius, NavMesh.AllAreas) ||
+                !NavMesh.SamplePosition(goalPosition, out NavMeshHit goalHit, goal.transform.lossyScale.magnitude, NavMesh.AllAreas))
+                return false;
+
+            return NavMesh.CalculatePath(agentHit.position, goalHit.position, NavMesh.AllAreas, _navMeshPath) &&
+                   _navMeshPath.status == NavMeshPathStatus.PathComplete &&
+                   _navMeshPath.corners.Length > 0;
         }
 
         public void UpdateVisualAgent()
@@ -222,7 +287,7 @@ namespace Biocrowds.Core
             if (_velocity.sqrMagnitude > 0.0f)
             {
                 Vector3 movement = _velocity * _timeStep;
-                Vector3 goalDist = goalsList[goalIndex].transform.position - transform.position;
+                Vector3 goalDist = _goalPosition - transform.position;
                 movement = Vector3.ClampMagnitude(movement, goalDist.magnitude);
 
                 transform.Translate(movement, Space.World);
@@ -231,6 +296,7 @@ namespace Biocrowds.Core
 
         public void WaitStep(float _timeStep)
         {
+
             if (goalIndex != goalsWaitList.Count - 1 && goalIndex + 1 > goalsWaitList.Count)
             {
                 //Debug.LogError("No wait defined for current goal");
@@ -311,6 +377,9 @@ namespace Biocrowds.Core
             float Ymodule = Vector3.Distance(_distAuxin[pRelationIndex], Vector3.zero);
             //distance between goal vector and origin
             float Xmodule = _dirAgentGoal.normalized.magnitude;
+
+            if (Xmodule < 0.00001f)
+                return 0.0f;
 
             float dot = Vector3.Dot(_distAuxin[pRelationIndex], _dirAgentGoal.normalized);
 
@@ -469,7 +538,8 @@ namespace Biocrowds.Core
             GameObject goal = goalsList[goalIndex];
             Collider goalCol = goal.GetComponent<Collider>();
             if (goalCol != null)
-                return goalCol.bounds.Contains(transform.position);
+                return goalCol.bounds.Contains(transform.position) ||
+                       Vector3.Distance(goalCol.ClosestPoint(transform.position), transform.position) <= 0.05f;
             else
             {
                 Vector2 agentPos = new Vector2(transform.position.x, transform.position.z);
@@ -479,13 +549,28 @@ namespace Biocrowds.Core
             }
         }
 
+        private Vector3 GetGoalPosition(GameObject goal)
+        {
+            Collider goalCollider = goal.GetComponent<Collider>();
+            SpawnArea spawnArea = goal.GetComponent<SpawnArea>();
+            if (spawnArea != null && (spawnArea.setGoalOnEnter || spawnArea.teleportToGoalOnEnter))
+                return goal.transform.position;
+
+            if (goalCollider == null)
+                return goal.transform.position;
+
+            Vector3 nearestPoint = goalCollider.ClosestPoint(transform.position);
+            return Vector3.MoveTowards(nearestPoint, goal.transform.position, 0.25f);
+        }
+
         public bool IsAtFinalGoal()
         {
             //Debug.Log(name + " : " + Vector3.Distance(transform.position, goalsList[goalsList.Count - 1].transform.position));
             GameObject goal = goalsList[goalsList.Count - 1];
             Collider goalCol = goal.GetComponent<Collider>();
             if (goalCol != null)
-                return goalCol.bounds.Contains(transform.position);
+                return goalCol.bounds.Contains(transform.position) ||
+                       Vector3.Distance(goalCol.ClosestPoint(transform.position), transform.position) <= 0.05f;
             else
             {
                 Vector2 agentPos = new Vector2(transform.position.x, transform.position.z);
