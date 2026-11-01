@@ -53,6 +53,10 @@ namespace Biocrowds.Core
 
         [SerializeField]
         protected Vector2 _offset = new Vector2(0.0f, 0.0f);
+        private Bounds _simulationBlockBounds;
+        private bool _hasSimulationBlockBounds;
+        public Bounds SimulationBlockBounds => _simulationBlockBounds;
+        public bool HasSimulationBlockBounds => _hasSimulationBlockBounds;
         public Vector2 Offset
         {
             get { return _offset; }
@@ -93,6 +97,7 @@ namespace Biocrowds.Core
 
         [SerializeField]
         protected MarkerSpawner _markerSpawner = null;
+        private GameObject _markerlessNavMeshVolumes;
 
 
         //max auxins on the ground
@@ -144,6 +149,12 @@ namespace Biocrowds.Core
             this._offset = offset;
         }
 
+        public void SetSimulationBlockBounds(Bounds bounds)
+        {
+            _simulationBlockBounds = bounds;
+            _hasSimulationBlockBounds = true;
+        }
+
         public void LoadWorld()
         {
             var markerSpawnerMethods = transform.GetComponentsInChildren<MarkerSpawner>();
@@ -175,6 +186,14 @@ namespace Biocrowds.Core
             yield return StartCoroutine(CreateCells());
 
             yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
+
+            if (CreateMarkerlessNavMeshVolumes())
+            {
+                _navmeshObject.BuildNavMesh();
+                _markerlessNavMeshVolumes.SetActive(false);
+                Destroy(_markerlessNavMeshVolumes);
+                _markerlessNavMeshVolumes = null;
+            }
 
             //populate cells with auxins
             //yield return StartCoroutine(DartThrowing());
@@ -221,6 +240,101 @@ namespace Biocrowds.Core
                 }
             }
             yield return null;
+        }
+
+        private bool CreateMarkerlessNavMeshVolumes()
+        {
+            if (_markerlessNavMeshVolumes != null)
+            {
+                Destroy(_markerlessNavMeshVolumes);
+                _markerlessNavMeshVolumes = null;
+            }
+
+            if (_cells.Count == 0)
+                return false;
+
+            int gridWidth = _cells.Max(cell => cell.X) + 1;
+            int gridHeight = _cells.Max(cell => cell.Z) + 1;
+            bool[,] markerlessCells = new bool[gridWidth, gridHeight];
+            Cell[,] cellsByGrid = new Cell[gridWidth, gridHeight];
+            int markerlessCount = 0;
+            foreach (Cell cell in _cells)
+            {
+                cellsByGrid[cell.X, cell.Z] = cell;
+                Bounds cellBounds = cell.GetBounds();
+                bool insideExclusionBounds = _hasSimulationBlockBounds &&
+                    cellBounds.min.x >= _simulationBlockBounds.min.x &&
+                    cellBounds.max.x <= _simulationBlockBounds.max.x &&
+                    cellBounds.min.z >= _simulationBlockBounds.min.z &&
+                    cellBounds.max.z <= _simulationBlockBounds.max.z;
+                markerlessCells[cell.X, cell.Z] = insideExclusionBounds && cell.Auxins.Count == 0;
+                if (markerlessCells[cell.X, cell.Z])
+                    markerlessCount++;
+            }
+
+            if (markerlessCount == 0)
+                return false;
+
+            _markerlessNavMeshVolumes = new GameObject("Markerless NavMesh Exclusions");
+            _markerlessNavMeshVolumes.transform.SetParent(_navmeshObject.transform, false);
+            int notWalkableArea = UnityEngine.AI.NavMesh.GetAreaFromName("Not Walkable");
+            bool[,] processedCells = new bool[gridWidth, gridHeight];
+
+            for (int z = 0; z < gridHeight; z++)
+            {
+                for (int x = 0; x < gridWidth; x++)
+                {
+                    if (!markerlessCells[x, z] || processedCells[x, z])
+                        continue;
+
+                    int rectangleWidth = 1;
+                    while (x + rectangleWidth < gridWidth &&
+                           markerlessCells[x + rectangleWidth, z] &&
+                           !processedCells[x + rectangleWidth, z])
+                    {
+                        rectangleWidth++;
+                    }
+
+                    int rectangleHeight = 1;
+                    while (z + rectangleHeight < gridHeight)
+                    {
+                        bool fullRow = true;
+                        for (int offsetX = 0; offsetX < rectangleWidth; offsetX++)
+                        {
+                            int row = z + rectangleHeight;
+                            if (!markerlessCells[x + offsetX, row] || processedCells[x + offsetX, row])
+                            {
+                                fullRow = false;
+                                break;
+                            }
+                        }
+
+                        if (!fullRow)
+                            break;
+
+                        rectangleHeight++;
+                    }
+
+                    for (int offsetX = 0; offsetX < rectangleWidth; offsetX++)
+                    {
+                        for (int offsetZ = 0; offsetZ < rectangleHeight; offsetZ++)
+                            processedCells[x + offsetX, z + offsetZ] = true;
+                    }
+
+                    Cell firstCell = cellsByGrid[x, z];
+                    GameObject exclusion = new GameObject($"No Markers [{x},{z}] {rectangleWidth}x{rectangleHeight}");
+                    exclusion.transform.SetParent(_markerlessNavMeshVolumes.transform);
+                    exclusion.transform.position = firstCell.transform.position +
+                        new Vector3(rectangleWidth - 1, 0f, rectangleHeight - 1);
+
+                    Unity.AI.Navigation.NavMeshModifierVolume volume =
+                        exclusion.AddComponent<Unity.AI.Navigation.NavMeshModifierVolume>();
+                    volume.area = notWalkableArea;
+                    volume.size = new Vector3(rectangleWidth * 2f, 100f, rectangleHeight * 2f);
+                }
+            }
+
+            return true;
         }
 
         protected virtual IEnumerator DartThrowing()
