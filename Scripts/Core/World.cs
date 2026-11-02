@@ -195,6 +195,8 @@ namespace Biocrowds.Core
                 _markerlessNavMeshVolumes = null;
             }
 
+            RelocateNavMeshDisconnectedBuildingExits(0.5f);
+
             //populate cells with auxins
             //yield return StartCoroutine(DartThrowing());
 
@@ -250,47 +252,72 @@ namespace Biocrowds.Core
                 _markerlessNavMeshVolumes = null;
             }
 
-            if (_cells.Count == 0)
+            if (!_hasSimulationBlockBounds ||
+                _simulationBlockBounds.size.x <= 0f ||
+                _simulationBlockBounds.size.z <= 0f)
                 return false;
 
-            int gridWidth = _cells.Max(cell => cell.X) + 1;
-            int gridHeight = _cells.Max(cell => cell.Z) + 1;
-            bool[,] markerlessCells = new bool[gridWidth, gridHeight];
-            Cell[,] cellsByGrid = new Cell[gridWidth, gridHeight];
-            int markerlessCount = 0;
-            foreach (Cell cell in _cells)
+            const float tileSize = 0.5f;
+            int gridWidth = Mathf.CeilToInt(_simulationBlockBounds.size.x / tileSize);
+            int gridHeight = Mathf.CeilToInt(_simulationBlockBounds.size.z / tileSize);
+            bool[,] tilesWithMarkers = new bool[gridWidth, gridHeight];
+            int supportedTileCount = 0;
+
+            foreach (Auxin auxin in _auxins)
             {
-                cellsByGrid[cell.X, cell.Z] = cell;
-                Bounds cellBounds = cell.GetBounds();
-                bool insideExclusionBounds = _hasSimulationBlockBounds &&
-                    cellBounds.min.x >= _simulationBlockBounds.min.x &&
-                    cellBounds.max.x <= _simulationBlockBounds.max.x &&
-                    cellBounds.min.z >= _simulationBlockBounds.min.z &&
-                    cellBounds.max.z <= _simulationBlockBounds.max.z;
-                markerlessCells[cell.X, cell.Z] = insideExclusionBounds && cell.Auxins.Count == 0;
-                if (markerlessCells[cell.X, cell.Z])
-                    markerlessCount++;
+                Vector3 markerPosition = auxin.Position;
+                if (markerPosition.x < _simulationBlockBounds.min.x ||
+                    markerPosition.x > _simulationBlockBounds.max.x ||
+                    markerPosition.z < _simulationBlockBounds.min.z ||
+                    markerPosition.z > _simulationBlockBounds.max.z)
+                    continue;
+
+                int x = Mathf.Clamp(
+                    Mathf.FloorToInt((markerPosition.x - _simulationBlockBounds.min.x) / tileSize),
+                    0,
+                    gridWidth - 1);
+                int z = Mathf.Clamp(
+                    Mathf.FloorToInt((markerPosition.z - _simulationBlockBounds.min.z) / tileSize),
+                    0,
+                    gridHeight - 1);
+
+                if (!tilesWithMarkers[x, z])
+                {
+                    tilesWithMarkers[x, z] = true;
+                    supportedTileCount++;
+                }
             }
 
-            if (markerlessCount == 0)
+            bool[,] reachableTiles = FindMarkerTilesReachableFromBlockExits(
+                tilesWithMarkers,
+                gridWidth,
+                gridHeight,
+                tileSize);
+            RelocateExitBuildingsToReachableMarkers(
+                reachableTiles,
+                gridWidth,
+                gridHeight,
+                tileSize);
+
+            if (supportedTileCount == gridWidth * gridHeight)
                 return false;
 
             _markerlessNavMeshVolumes = new GameObject("Markerless NavMesh Exclusions");
             _markerlessNavMeshVolumes.transform.SetParent(_navmeshObject.transform, false);
             int notWalkableArea = UnityEngine.AI.NavMesh.GetAreaFromName("Not Walkable");
-            bool[,] processedCells = new bool[gridWidth, gridHeight];
+            bool[,] processedTiles = new bool[gridWidth, gridHeight];
 
             for (int z = 0; z < gridHeight; z++)
             {
                 for (int x = 0; x < gridWidth; x++)
                 {
-                    if (!markerlessCells[x, z] || processedCells[x, z])
+                    if (tilesWithMarkers[x, z] || processedTiles[x, z])
                         continue;
 
                     int rectangleWidth = 1;
                     while (x + rectangleWidth < gridWidth &&
-                           markerlessCells[x + rectangleWidth, z] &&
-                           !processedCells[x + rectangleWidth, z])
+                           !tilesWithMarkers[x + rectangleWidth, z] &&
+                           !processedTiles[x + rectangleWidth, z])
                     {
                         rectangleWidth++;
                     }
@@ -302,7 +329,7 @@ namespace Biocrowds.Core
                         for (int offsetX = 0; offsetX < rectangleWidth; offsetX++)
                         {
                             int row = z + rectangleHeight;
-                            if (!markerlessCells[x + offsetX, row] || processedCells[x + offsetX, row])
+                            if (tilesWithMarkers[x + offsetX, row] || processedTiles[x + offsetX, row])
                             {
                                 fullRow = false;
                                 break;
@@ -318,22 +345,261 @@ namespace Biocrowds.Core
                     for (int offsetX = 0; offsetX < rectangleWidth; offsetX++)
                     {
                         for (int offsetZ = 0; offsetZ < rectangleHeight; offsetZ++)
-                            processedCells[x + offsetX, z + offsetZ] = true;
+                            processedTiles[x + offsetX, z + offsetZ] = true;
                     }
 
-                    Cell firstCell = cellsByGrid[x, z];
                     GameObject exclusion = new GameObject($"No Markers [{x},{z}] {rectangleWidth}x{rectangleHeight}");
                     exclusion.transform.SetParent(_markerlessNavMeshVolumes.transform);
-                    exclusion.transform.position = firstCell.transform.position +
-                        new Vector3(rectangleWidth - 1, 0f, rectangleHeight - 1);
+                    float minX = _simulationBlockBounds.min.x + x * tileSize;
+                    float minZ = _simulationBlockBounds.min.z + z * tileSize;
+                    float width = Mathf.Min(rectangleWidth * tileSize, _simulationBlockBounds.max.x - minX);
+                    float length = Mathf.Min(rectangleHeight * tileSize, _simulationBlockBounds.max.z - minZ);
+                    exclusion.transform.position = new Vector3(
+                        minX + width * 0.5f,
+                        _simulationBlockBounds.center.y,
+                        minZ + length * 0.5f);
 
                     Unity.AI.Navigation.NavMeshModifierVolume volume =
                         exclusion.AddComponent<Unity.AI.Navigation.NavMeshModifierVolume>();
                     volume.area = notWalkableArea;
-                    volume.size = new Vector3(rectangleWidth * 2f, 100f, rectangleHeight * 2f);
+                    volume.size = new Vector3(width, 100f, length);
                 }
             }
 
+            return true;
+        }
+
+        private void RelocateNavMeshDisconnectedBuildingExits(float markerSnapDistance)
+        {
+            SpawnArea[] blockExits = FindObjectsOfType<SpawnArea>()
+                .Where(area => area.name == "ExitBlock" || area.name == "BlockExit")
+                .ToArray();
+            SpawnArea[] buildingExits = FindObjectsOfType<SpawnArea>()
+                .Where(area => area.name == "ExitBuildings")
+                .ToArray();
+            UnityEngine.AI.NavMeshPath path = new UnityEngine.AI.NavMeshPath();
+            Dictionary<Vector3, bool> markerPathCache = new Dictionary<Vector3, bool>();
+
+            foreach (SpawnArea buildingExit in buildingExits)
+            {
+                float exitSnapDistance = Mathf.Max(
+                    markerSnapDistance,
+                    buildingExit.transform.lossyScale.magnitude);
+                if (HasCompleteNavMeshPathToAnyExit(
+                    buildingExit.transform.position,
+                    exitSnapDistance,
+                    blockExits,
+                    markerSnapDistance,
+                    path))
+                    continue;
+
+                Auxin closestMarker = _auxins
+                    .OrderBy(marker => (marker.Position - buildingExit.transform.position).sqrMagnitude)
+                    .FirstOrDefault(marker =>
+                {
+                    if (!markerPathCache.TryGetValue(marker.Position, out bool hasCompletePath))
+                    {
+                        hasCompletePath = HasCompleteNavMeshPathToAnyExit(
+                            marker.Position,
+                            markerSnapDistance,
+                            blockExits,
+                            markerSnapDistance,
+                            path);
+                        markerPathCache[marker.Position] = hasCompletePath;
+                    }
+
+                    return hasCompletePath;
+                });
+
+                if (closestMarker == null)
+                {
+                    Debug.LogWarning(
+                        $"ExitBuildings '{buildingExit.name}' has no marker with a complete NavMesh path to a block exit.",
+                        buildingExit);
+                    buildingExit.gameObject.SetActive(false);
+                    continue;
+                }
+
+                buildingExit.transform.position = closestMarker.Position;
+            }
+        }
+
+        private bool HasCompleteNavMeshPathToAnyExit(
+            Vector3 position,
+            float positionSnapDistance,
+            SpawnArea[] blockExits,
+            float exitSnapDistance,
+            UnityEngine.AI.NavMeshPath path)
+        {
+            if (!UnityEngine.AI.NavMesh.SamplePosition(
+                position,
+                out UnityEngine.AI.NavMeshHit startHit,
+                positionSnapDistance,
+                UnityEngine.AI.NavMesh.AllAreas))
+                return false;
+
+            foreach (SpawnArea blockExit in blockExits)
+            {
+                float snapDistance = Mathf.Max(
+                    exitSnapDistance,
+                    blockExit.transform.lossyScale.magnitude);
+                if (!UnityEngine.AI.NavMesh.SamplePosition(
+                    blockExit.transform.position,
+                    out UnityEngine.AI.NavMeshHit goalHit,
+                    snapDistance,
+                    UnityEngine.AI.NavMesh.AllAreas))
+                    continue;
+
+                if (UnityEngine.AI.NavMesh.CalculatePath(
+                    startHit.position,
+                    goalHit.position,
+                    UnityEngine.AI.NavMesh.AllAreas,
+                    path) &&
+                    path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete &&
+                    path.corners.Length > 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool[,] FindMarkerTilesReachableFromBlockExits(
+            bool[,] tilesWithMarkers,
+            int gridWidth,
+            int gridHeight,
+            float tileSize)
+        {
+            bool[,] reachableTiles = new bool[gridWidth, gridHeight];
+            Queue<Vector2Int> frontier = new Queue<Vector2Int>();
+            SpawnArea[] blockExits = FindObjectsOfType<SpawnArea>()
+                .Where(area => area.name == "ExitBlock" || area.name == "BlockExit")
+                .ToArray();
+
+            foreach (SpawnArea blockExit in blockExits)
+            {
+                Bounds exitBounds = blockExit.Collider != null
+                    ? blockExit.Collider.bounds
+                    : new Bounds(blockExit.transform.position, blockExit.transform.lossyScale);
+                exitBounds.Expand(new Vector3(tileSize * 2f, 0f, tileSize * 2f));
+
+                foreach (Auxin marker in _auxins)
+                {
+                    Vector3 position = marker.Position;
+                    if (position.x < exitBounds.min.x || position.x > exitBounds.max.x ||
+                        position.z < exitBounds.min.z || position.z > exitBounds.max.z ||
+                        !TryGetBlockTile(position, gridWidth, gridHeight, tileSize, out int x, out int z) ||
+                        !tilesWithMarkers[x, z] || reachableTiles[x, z])
+                        continue;
+
+                    reachableTiles[x, z] = true;
+                    frontier.Enqueue(new Vector2Int(x, z));
+                }
+            }
+
+            Vector2Int[] directions =
+            {
+                Vector2Int.right,
+                Vector2Int.left,
+                Vector2Int.up,
+                Vector2Int.down
+            };
+
+            while (frontier.Count > 0)
+            {
+                Vector2Int tile = frontier.Dequeue();
+                foreach (Vector2Int direction in directions)
+                {
+                    int x = tile.x + direction.x;
+                    int z = tile.y + direction.y;
+                    if (x < 0 || x >= gridWidth || z < 0 || z >= gridHeight ||
+                        reachableTiles[x, z] || !tilesWithMarkers[x, z])
+                        continue;
+
+                    reachableTiles[x, z] = true;
+                    frontier.Enqueue(new Vector2Int(x, z));
+                }
+            }
+
+            return reachableTiles;
+        }
+
+        private void RelocateExitBuildingsToReachableMarkers(
+            bool[,] reachableTiles,
+            int gridWidth,
+            int gridHeight,
+            float tileSize)
+        {
+            SpawnArea[] buildingExits = FindObjectsOfType<SpawnArea>()
+                .Where(area => area.name == "ExitBuildings")
+                .ToArray();
+
+            foreach (SpawnArea buildingExit in buildingExits)
+            {
+                if (TryGetBlockTile(buildingExit.transform.position, gridWidth, gridHeight, tileSize, out int currentX, out int currentZ) &&
+                    reachableTiles[currentX, currentZ])
+                    continue;
+
+                Collider buildingCollider = buildingExit.transform.parent != null
+                    ? buildingExit.transform.parent.GetComponentInParent<Collider>()
+                    : null;
+                Auxin closestMarker = null;
+                float closestDistance = float.PositiveInfinity;
+
+                foreach (Auxin marker in _auxins)
+                {
+                    if (!TryGetBlockTile(marker.Position, gridWidth, gridHeight, tileSize, out int x, out int z) ||
+                        !reachableTiles[x, z])
+                        continue;
+
+                    if (buildingCollider != null &&
+                        marker.Position.x >= buildingCollider.bounds.min.x &&
+                        marker.Position.x <= buildingCollider.bounds.max.x &&
+                        marker.Position.z >= buildingCollider.bounds.min.z &&
+                        marker.Position.z <= buildingCollider.bounds.max.z)
+                        continue;
+
+                    float distance = (marker.Position - buildingExit.transform.position).sqrMagnitude;
+                    if (distance < closestDistance)
+                    {
+                        closestDistance = distance;
+                        closestMarker = marker;
+                    }
+                }
+
+                if (closestMarker == null)
+                {
+                    Debug.LogWarning(
+                        $"ExitBuildings '{buildingExit.name}' has no marker-supported position connected to a block exit.",
+                        buildingExit);
+                    continue;
+                }
+
+                buildingExit.transform.position = closestMarker.Position;
+            }
+        }
+
+        private bool TryGetBlockTile(
+            Vector3 position,
+            int gridWidth,
+            int gridHeight,
+            float tileSize,
+            out int x,
+            out int z)
+        {
+            x = 0;
+            z = 0;
+            if (position.x < _simulationBlockBounds.min.x || position.x > _simulationBlockBounds.max.x ||
+                position.z < _simulationBlockBounds.min.z || position.z > _simulationBlockBounds.max.z)
+                return false;
+
+            x = Mathf.Clamp(
+                Mathf.FloorToInt((position.x - _simulationBlockBounds.min.x) / tileSize),
+                0,
+                gridWidth - 1);
+            z = Mathf.Clamp(
+                Mathf.FloorToInt((position.z - _simulationBlockBounds.min.z) / tileSize),
+                0,
+                gridHeight - 1);
             return true;
         }
 
@@ -672,6 +938,7 @@ namespace Biocrowds.Core
                 {
                     agent.transform.position = goal.transform.position;
                 }
+                agent.CurrentCell = GetClosestCellToPoint(agent.transform.position);
                 agent.wasTeleported = true;
             }
             _area.teleportBuffer.Clear();

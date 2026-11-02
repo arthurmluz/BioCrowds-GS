@@ -46,6 +46,8 @@ public class RegularGridMarkerSpawner : MarkerSpawner
                     float rDir = Random.Range(0, 360);
                     Vector3 rOffset = Quaternion.Euler(0, rDir, 0) * Vector3.forward * Random.Range(0, randomIntensity);
                     targetPosition += rOffset;
+                    if (NavMesh.SamplePosition(targetPosition, out NavMeshHit hit, randomIntensity, NavMesh.AllAreas))
+                        targetPosition = hit.position;
                 }
 
                 // Creates new Marker and sets its data

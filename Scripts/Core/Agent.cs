@@ -234,22 +234,31 @@ namespace Biocrowds.Core
         {
             exitGoal = null;
             exitGoalPosition = transform.position;
+            float shortestPathLength = float.PositiveInfinity;
 
             IEnumerable<SpawnArea> blockExits = FindObjectsOfType<SpawnArea>()
-                .Where(exit => exit.name == "ExitBlock" || exit.name == "BlockExit")
-                .OrderBy(exit => (exit.transform.position - transform.position).sqrMagnitude);
+                .Where(exit => exit.name == "ExitBlock" || exit.name == "BlockExit");
 
             foreach (SpawnArea exit in blockExits)
             {
                 if (!TryCalculatePath(exit.gameObject, out Vector3 candidatePosition))
                     continue;
 
+                float pathLength = 0f;
+                for (int corner = 1; corner < _navMeshPath.corners.Length; corner++)
+                    pathLength += Vector3.Distance(
+                        _navMeshPath.corners[corner - 1],
+                        _navMeshPath.corners[corner]);
+
+                if (pathLength >= shortestPathLength)
+                    continue;
+
+                shortestPathLength = pathLength;
                 exitGoal = exit.gameObject;
                 exitGoalPosition = candidatePosition;
-                return true;
             }
 
-            return false;
+            return exitGoal != null;
         }
 
         private bool TryCalculatePath(GameObject goal, out Vector3 goalPosition)
