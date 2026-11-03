@@ -10,6 +10,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.AI;
+using Unity.Profiling;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -19,6 +20,8 @@ namespace Biocrowds.Core
     public class Agent : MonoBehaviour
     {
         private const float UPDATE_NAVMESH_INTERVAL = 1.0f;
+        private static readonly ProfilerMarker FindNearAuxinsMarker = new ProfilerMarker("BioCrowds.Agent.FindNearAuxins");
+        private static readonly ProfilerMarker FindCellMarker = new ProfilerMarker("BioCrowds.Agent.FindCell");
 
         //agent radius
         public float agentRadius;
@@ -429,78 +432,93 @@ namespace Biocrowds.Core
         //call this method from game controller, to make it sequential for each agent
         public void FindNearAuxins()
         {
-            //clear them all, for obvious reasons
-            _auxins.Clear();
-
-            //get all auxins on my cell
-            List<Auxin> cellAuxins = _currentCell.Auxins;
-
-            //iterate all cell auxins to check distance between auxins and agent
-            for (int i = 0; i < cellAuxins.Count; i++)
+            using (FindNearAuxinsMarker.Auto())
             {
-                //see if the distance between this agent and this auxin is smaller than the actual value, and inside agent radius
-                float distanceSqr = (transform.position - cellAuxins[i].Position).sqrMagnitude;
-                if (distanceSqr < cellAuxins[i].MinDistance && distanceSqr <= agentRadius * agentRadius)
+                Vector3 agentPosition = transform.position;
+                float agentRadiusSqr = agentRadius * agentRadius;
+                _auxins.Clear();
+
+                //get all auxins on my cell
+                List<Auxin> cellAuxins = _currentCell.Auxins;
+
+                //iterate all cell auxins to check distance between auxins and agent
+                for (int i = 0; i < cellAuxins.Count; i++)
                 {
-                    //take the auxin!
-                    //if this auxin already was taken, need to remove it from the agent who had it
-                    if (cellAuxins[i].IsTaken)
-                        cellAuxins[i].Agent.Auxins.Remove(cellAuxins[i]);
+                    //see if the distance between this agent and this auxin is smaller than the actual value, and inside agent radius
+                    float distanceSqr = (agentPosition - cellAuxins[i].Position).sqrMagnitude;
+                    if (distanceSqr < cellAuxins[i].MinDistance && distanceSqr <= agentRadiusSqr)
+                    {
+                        //take the auxin!
+                        //if this auxin already was taken, need to remove it from the agent who had it
+                        if (cellAuxins[i].IsTaken)
+                            cellAuxins[i].Agent.Auxins.Remove(cellAuxins[i]);
 
-                    //auxin is taken
-                    cellAuxins[i].IsTaken = true;
+                        //auxin is taken
+                        cellAuxins[i].IsTaken = true;
 
-                    //auxin has agent
-                    cellAuxins[i].Agent = this;
-                    //update min distance
-                    cellAuxins[i].MinDistance = distanceSqr;
-                    //update my auxins
-                    _auxins.Add(cellAuxins[i]);
+                        //auxin has agent
+                        cellAuxins[i].Agent = this;
+                        //update min distance
+                        cellAuxins[i].MinDistance = distanceSqr;
+                        //update my auxins
+                        _auxins.Add(cellAuxins[i]);
+                    }
                 }
-            }
 
-            FindCell();
+                using (FindCellMarker.Auto())
+                    FindCell(agentPosition, agentRadiusSqr);
+            }
         }
 
-        private void FindCell()
+        private void FindCell(Vector3 agentPosition, float agentRadiusSqr)
         {
             //distance from agent to cell, to define agent new cell
-            float distanceToCellSqr = (transform.position - _currentCell.transform.position).sqrMagnitude; //Vector3.Distance(transform.position, _currentCell.transform.position);
+            float distanceToCellSqr = (agentPosition - _currentCell.transform.position).sqrMagnitude;
 
             //cap the limits
             //[ ][ ][ ]
             //[ ][X][ ]
             //[ ][ ][ ]
             if (_currentCell.X > 0 && _currentCell.Z > 0)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X - 1, _currentCell.Z - 1);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X - 1, _currentCell.Z - 1);
 
             if (_currentCell.X > 0)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X - 1, _currentCell.Z + 0);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X - 1, _currentCell.Z + 0);
 
             if (_currentCell.X > 0 && _currentCell.Z < _totalZ - 1)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X - 1, _currentCell.Z + 1);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X - 1, _currentCell.Z + 1);
 
             if (_currentCell.Z > 0)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X + 0, _currentCell.Z - 1);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X + 0, _currentCell.Z - 1);
 
             if (_currentCell.Z < _totalZ - 1)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X + 0, _currentCell.Z + 1);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X + 0, _currentCell.Z + 1);
 
             if (_currentCell.X < _totalX && _currentCell.Z > 0)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X + 1, _currentCell.Z - 1);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X + 1, _currentCell.Z - 1);
 
             if (_currentCell.X < _totalX)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X + 1, _currentCell.Z + 0);
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X + 1, _currentCell.Z + 0);
 
             if (_currentCell.X < _totalX && _currentCell.Z < _totalZ - 1)
-                CheckAuxins(ref distanceToCellSqr, _currentCell.X + 1, _currentCell.Z + 1);                        
+                CheckAuxins(ref distanceToCellSqr, agentPosition, agentRadiusSqr, _currentCell.X + 1, _currentCell.Z + 1);
         }
 
-        private void CheckAuxins(ref float pDistToCellSqr, int x, int z)
+        private void CheckAuxins(
+            ref float pDistToCellSqr,
+            Vector3 agentPosition,
+            float agentRadiusSqr,
+            int x,
+            int z)
         {
-            CheckAuxins(ref pDistToCellSqr, _world.Cells[x * _totalZ + z]);
+            CheckAuxins(ref pDistToCellSqr, agentPosition, agentRadiusSqr, _world.Cells[x * _totalZ + z]);
         }
-        private void CheckAuxins(ref float pDistToCellSqr, Cell pCell)
+
+        private void CheckAuxins(
+            ref float pDistToCellSqr,
+            Vector3 agentPosition,
+            float agentRadiusSqr,
+            Cell pCell)
         {
             //get all auxins on neighbourcell
             List<Auxin> cellAuxins = pCell.Auxins;
@@ -509,8 +527,8 @@ namespace Biocrowds.Core
             for (int c = 0; c < cellAuxins.Count; c++)
             {
                 //see if the distance between this agent and this auxin is smaller than the actual value, and smaller than agent radius
-                float distanceSqr = (transform.position - cellAuxins[c].Position).sqrMagnitude;
-                if (distanceSqr < cellAuxins[c].MinDistance && distanceSqr <= agentRadius * agentRadius)
+                float distanceSqr = (agentPosition - cellAuxins[c].Position).sqrMagnitude;
+                if (distanceSqr < cellAuxins[c].MinDistance && distanceSqr <= agentRadiusSqr)
                 {
                     //take the auxin
                     //if this auxin already was taken, need to remove it from the agent who had it
@@ -529,7 +547,7 @@ namespace Biocrowds.Core
             }
 
             //see distance to this cell
-            float distanceToNeighbourCell = (transform.position - pCell.transform.position).sqrMagnitude; 
+            float distanceToNeighbourCell = (agentPosition - pCell.transform.position).sqrMagnitude;
             if (distanceToNeighbourCell < pDistToCellSqr)
             {
                 pDistToCellSqr = distanceToNeighbourCell;

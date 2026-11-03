@@ -11,7 +11,7 @@ public class SceneController : MonoBehaviour
     private bool initialized = false;
 
     public static bool ShowCells { get; protected set; } = true;
-    public static bool ShowAuxins { get; protected set; } = true;
+    public static bool ShowAuxins { get; protected set; } = false;
     public static bool ShowSpawnAreas { get; protected set; } = true;
     public static bool ShowAuxinVectors { get; protected set; } = false;
 

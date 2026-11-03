@@ -20,21 +20,30 @@ public abstract class MarkerSpawner : MonoBehaviour
     public int _maxMarkersPerCell;
 
     public Auxin auxinPrefab;
+    private readonly Collider[] obstacleOverlapResults = new Collider[1];
+    private int obstacleLayerMask = -1;
 
     public abstract IEnumerator CreateMarkers(List<Cell> _cells, List<Auxin> _auxins);
 
     protected bool HasMarkersNearby(Vector3 test, List<Auxin> others)
     {
+        float markerRadiusSqr = MarkerRadius * MarkerRadius;
         for (int i = 0; i < others.Count; i++)
-            if (Vector3.Distance(test, others[i].Position) < MarkerRadius)
+            if ((test - others[i].Position).sqrMagnitude < markerRadiusSqr)
                 return true;
         return false;
     }
 
     protected bool HasObstacleNearby(Vector3 test)
     {
-        Collider[] hitColliders = Physics.OverlapSphere(test, MarkerRadius + 0.1f, 1 << LayerMask.NameToLayer("Obstacle"));
-        return hitColliders.Length > 0 ? true : false;
+        if (obstacleLayerMask == -1)
+            obstacleLayerMask = 1 << LayerMask.NameToLayer("Obstacle");
+
+        return Physics.OverlapSphereNonAlloc(
+            test,
+            MarkerRadius + 0.1f,
+            obstacleOverlapResults,
+            obstacleLayerMask) > 0;
     }
 
     protected bool IsOnNavmesh(Vector3 test, out Vector3 position, float snap = 0.05f)

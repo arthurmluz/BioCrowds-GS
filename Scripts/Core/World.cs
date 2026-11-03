@@ -12,11 +12,21 @@ using System.Collections;
 using Unity.AI;
 using Unity.AI.Navigation;
 using System.Linq;
+using Unity.Profiling;
 
 namespace Biocrowds.Core
 {
     public class World : MonoBehaviour
     {
+        private const int MaxCachedTeleportPositions = 16;
+
+        private sealed class TeleportPositionCache
+        {
+            public readonly List<Vector3> insidePositions = new List<Vector3>();
+            public Vector3 outsidePosition;
+            public bool hasOutsidePosition;
+        }
+
         [Header("Simulation Configuration")]
         public SimulationConfiguration.MarkerSpawnMethod markerSpawnMethod;
 
@@ -98,6 +108,26 @@ namespace Biocrowds.Core
         [SerializeField]
         protected MarkerSpawner _markerSpawner = null;
         private GameObject _markerlessNavMeshVolumes;
+        private readonly List<Auxin> _teleportInsideCandidates = new List<Auxin>();
+        private readonly List<Auxin> _teleportOutsideCandidates = new List<Auxin>();
+        private readonly Dictionary<SpawnArea, Dictionary<GameObject, TeleportPositionCache>> _teleportPositionCache =
+            new Dictionary<SpawnArea, Dictionary<GameObject, TeleportPositionCache>>();
+        private static readonly ProfilerMarker SpawnAreaUpdateMarker = new ProfilerMarker("BioCrowds.World.SpawnAreas");
+        private static readonly ProfilerMarker VisualAgentUpdateMarker = new ProfilerMarker("BioCrowds.World.VisualAgents");
+        private static readonly ProfilerMarker AuxinResetMarker = new ProfilerMarker("BioCrowds.World.ResetAuxins");
+        private static readonly ProfilerMarker AuxinAssignmentMarker = new ProfilerMarker("BioCrowds.World.FindNearAuxins");
+        private static readonly ProfilerMarker AgentMovementMarker = new ProfilerMarker("BioCrowds.World.AgentMovement");
+        private static readonly ProfilerMarker TeleportMarker = new ProfilerMarker("BioCrowds.World.Teleports");
+        private static readonly ProfilerMarker TeleportBufferMarker = new ProfilerMarker("BioCrowds.World.Teleport.Buffer");
+        private static readonly ProfilerMarker TeleportDestinationMarker = new ProfilerMarker("BioCrowds.World.Teleport.Destination");
+        private static readonly ProfilerMarker TeleportCacheBuildMarker = new ProfilerMarker("BioCrowds.World.Teleport.CacheBuild");
+        private static readonly ProfilerMarker TeleportCacheSelectionMarker = new ProfilerMarker("BioCrowds.World.Teleport.CacheSelection");
+        private static readonly ProfilerMarker TeleportCacheInsideScanMarker = new ProfilerMarker("BioCrowds.World.Teleport.CacheInsideScan");
+        private static readonly ProfilerMarker TeleportCacheInsidePathsMarker = new ProfilerMarker("BioCrowds.World.Teleport.CacheInsidePaths");
+        private static readonly ProfilerMarker TeleportCacheFallbackMarker = new ProfilerMarker("BioCrowds.World.Teleport.CacheFallback");
+        private static readonly ProfilerMarker TeleportCellMarker = new ProfilerMarker("BioCrowds.World.Teleport.CellAssignment");
+        private static readonly ProfilerMarker GoalHandlingMarker = new ProfilerMarker("BioCrowds.World.GoalHandling");
+        private static readonly ProfilerMarker NavMeshStepMarker = new ProfilerMarker("BioCrowds.World.NavmeshStep");
 
 
         //max auxins on the ground
@@ -186,6 +216,7 @@ namespace Biocrowds.Core
             yield return StartCoroutine(CreateCells());
 
             yield return StartCoroutine(_markerSpawner.CreateMarkers(_cells, _auxins));
+            _teleportPositionCache.Clear();
 
             if (CreateMarkerlessNavMeshVolumes())
             {
@@ -731,37 +762,47 @@ namespace Biocrowds.Core
             // Update simulation time
             _simulationTime += deltaTime;
 
-            foreach (SpawnArea _area in spawnAreas)
+            using (SpawnAreaUpdateMarker.Auto())
             {
-                _area.UpdateSpawnCounter(deltaTime);
-                if (_area.CycleReady)
+                foreach (SpawnArea _area in spawnAreas)
                 {
-                    for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
+                    _area.UpdateSpawnCounter(deltaTime);
+                    if (_area.CycleReady)
                     {
-                        if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
-                            SpawnNewAgentInArea(_area, false);
+                        for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
+                        {
+                            if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
+                                SpawnNewAgentInArea(_area, false);
+                        }
                     }
+                    _area.ResetCycleReady();
                 }
-                _area.ResetCycleReady();
             }
 
             // Update de Navmesh for each agent 
-            for (int i = 0; i < _agents.Count; i++)
-                _agents[i].UpdateVisualAgent();
+            using (VisualAgentUpdateMarker.Auto())
+            {
+                for (int i = 0; i < _agents.Count; i++)
+                    _agents[i].UpdateVisualAgent();
+            }
 
             //reset auxins
-            for (int i = 0; i < _cells.Count; i++)
-                for (int j = 0; j < _cells[i].Auxins.Count; j++)
-                    _cells[i].Auxins[j].ResetAuxin();
-
-           
+            using (AuxinResetMarker.Auto())
+            {
+                for (int i = 0; i < _cells.Count; i++)
+                    for (int j = 0; j < _cells[i].Auxins.Count; j++)
+                        _cells[i].Auxins[j].ResetAuxin();
+            }
 
             //find nearest auxins for each agent
-            for (int i = 0; i < _agents.Count; i++)
-                _agents[i].FindNearAuxins();
+            using (AuxinAssignmentMarker.Auto())
+            {
+                for (int i = 0; i < _agents.Count; i++)
+                    _agents[i].FindNearAuxins();
 
-            for (int i = 0; i < _agents.Count; i++)
-                _agents[i].auxinCount = _agents[i].Auxins.Count;
+                for (int i = 0; i < _agents.Count; i++)
+                    _agents[i].auxinCount = _agents[i].Auxins.Count;
+            }
             /*
              * to find where the agent must move, we need to get the vectors from the agent to each auxin he has, and compare with 
              * the vector from agent to goal, generating a angle which must lie between 0 (best case) and 180 (worst case)
@@ -776,65 +817,75 @@ namespace Biocrowds.Core
 
             List<Agent> _agentsToRemove = new List<Agent>();
             //for (int i = 0; i < _maxAgents; i++)
-            for (int i = 0; i < _agents.Count; i++)
+            using (AgentMovementMarker.Auto())
             {
-                //find the agent
-                List<Auxin> agentAuxins = _agents[i].Auxins;
-
-                //vector for each auxin
-                for (int j = 0; j < agentAuxins.Count; j++)
+                for (int i = 0; i < _agents.Count; i++)
                 {
-                    //add the distance vector between it and the agent
-                    _agents[i]._distAuxin.Add(agentAuxins[j].Position - _agents[i].transform.position);
+                    //find the agent
+                    List<Auxin> agentAuxins = _agents[i].Auxins;
+
+                    //vector for each auxin
+                    for (int j = 0; j < agentAuxins.Count; j++)
+                    {
+                        //add the distance vector between it and the agent
+                        _agents[i]._distAuxin.Add(agentAuxins[j].Position - _agents[i].transform.position);
+                    }
+
+                    //calculate the movement vector
+                    _agents[i].CalculateDirection();
+                    //calculate speed vector
+                    _agents[i].CalculateVelocity();
+                    //step
+                    if (_agents[i].shouldMove)
+                        _agents[i].MovementStep(deltaTime);
+
+                    _agents[i].WaitStep(deltaTime);
+
+                    _agents[i].wasTeleported = false;
                 }
-
-                //calculate the movement vector
-                _agents[i].CalculateDirection();
-                //calculate speed vector
-                _agents[i].CalculateVelocity();
-                //step
-                if (_agents[i].shouldMove)
-                    _agents[i].MovementStep(deltaTime);
-
-                _agents[i].WaitStep(deltaTime);
-
-                _agents[i].wasTeleported = false;
             }
 
             // teleporta agentes buffered de cada spawn
-            foreach (SpawnArea _area in spawnAreas)
+            using (TeleportMarker.Auto())
             {
-                TeleportBufferedAgents(_area);
+                foreach (SpawnArea _area in spawnAreas)
+                    TeleportBufferedAgents(_area);
             }
-            
-            for (int i = 0; i < _agents.Count; i++)
+
+            using (GoalHandlingMarker.Auto())
             {
-                if (_agents[i].IsAtCurrentGoal())
+                for (int i = 0; i < _agents.Count; i++)
                 {
-                    SpawnArea goal = _agents[i].GetCurrentGoal()?.GetComponentInChildren<SpawnArea>();
-                    if (goal != null)
-                    {   // depednendo do goal, coloca agentes pro buffer de teleporte
-                        goal.AgentEntered(_agents[i]);
+                    if (_agents[i].IsAtCurrentGoal())
+                    {
+                        SpawnArea goal = _agents[i].GetCurrentGoal()?.GetComponentInChildren<SpawnArea>();
+                        if (goal != null)
+                        {   // depednendo do goal, coloca agentes pro buffer de teleporte
+                            goal.AgentEntered(_agents[i]);
+                        }
                     }
+
+                    //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)               
+                    if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal())
+                        _agentsToRemove.Add(_agents[i]);
                 }
 
-                //if (_agents[i].IsAtCurrentGoal() && !_agents[i].isWaiting)               
-                if (_agents[i].removeWhenGoalReached && _agents[i].IsAtFinalGoal())
-                    _agentsToRemove.Add(_agents[i]);
+                foreach (Agent a in _agentsToRemove)
+                {
+                    _agents.Remove(a);
+                    _finishedAgents.Add(a);
+                    a.gameObject.SetActive(false);
+                    OnAgentFinished?.Invoke(a);
+                }
+                _agentsToRemove.Clear();
             }
-
-            foreach(Agent a in _agentsToRemove)
-            {
-                _agents.Remove(a);
-                _finishedAgents.Add(a);
-                a.gameObject.SetActive(false);
-                OnAgentFinished?.Invoke(a);
-            }
-            _agentsToRemove.Clear();
 
             // Update de Navmesh for each agent 
-            for (int i = 0; i < _agents.Count; i++)
-                _agents[i].NavmeshStep(deltaTime);            
+            using (NavMeshStepMarker.Auto())
+            {
+                for (int i = 0; i < _agents.Count; i++)
+                    _agents[i].NavmeshStep(deltaTime);
+            }
 
             // check if finished
             _isFinished = _agents.Count == 0 && spawnAreas.All(x => x.Finished);
@@ -847,18 +898,33 @@ namespace Biocrowds.Core
 
         protected Cell GetClosestCellToPoint (Vector3 point)
         {
-            float _minDist = Vector3.Distance(point, _cells[0].transform.position);
-            int _minIndex = 0;
-            for (int i = 1; i < _cells.Count; i ++)
+            int cellsAlongX = Mathf.CeilToInt(_dimension.x * 0.5f);
+            int cellsAlongZ = Mathf.CeilToInt(_dimension.y * 0.5f);
+            int cellX = Mathf.Clamp(
+                Mathf.RoundToInt((point.x - _offset.x - 1f) * 0.5f),
+                0,
+                cellsAlongX - 1);
+            int cellZ = Mathf.Clamp(
+                Mathf.RoundToInt((point.z - _offset.y - 1f) * 0.5f),
+                0,
+                cellsAlongZ - 1);
+            int cellIndex = cellX * cellsAlongZ + cellZ;
+            if (cellIndex >= 0 && cellIndex < _cells.Count)
+                return _cells[cellIndex];
+
+            float minDistanceSqr = (point - _cells[0].transform.position).sqrMagnitude;
+            int minIndex = 0;
+            for (int i = 1; i < _cells.Count; i++)
             {
-                if (Vector3.Distance(point, _cells[i].transform.position) < _minDist)
+                float distanceSqr = (point - _cells[i].transform.position).sqrMagnitude;
+                if (distanceSqr < minDistanceSqr)
                 {
-                    _minDist = Vector3.Distance(point, _cells[i].transform.position);
-                    _minIndex = i;
+                    minDistanceSqr = distanceSqr;
+                    minIndex = i;
                 }
             }
 
-            return _cells[_minIndex];
+            return _cells[minIndex];
         }
 
         protected void SpawnNewAgent(Vector3 _pos, bool _removeWhenGoalReached, List<GameObject> _goalList)
@@ -916,65 +982,74 @@ namespace Biocrowds.Core
 
         protected void TeleportBufferedAgents(SpawnArea _area)
         {
-            if (_area.teleportBuffer.Count == 0)
-                return;
-
-            GameObject goal = _area.enteringGoalList[0];
-            SpawnArea area = goal.GetComponentInChildren<SpawnArea>();
-            foreach (Agent agent in _area.teleportBuffer)
+            using (TeleportBufferMarker.Auto())
             {
-                if (area != null)
+                if (_area.teleportBuffer.Count == 0)
+                    return;
+
+                GameObject goal = _area.enteringGoalList[0];
+                SpawnArea area = goal.GetComponentInChildren<SpawnArea>();
+                foreach (Agent agent in _area.teleportBuffer)
                 {
-                    if (!TryGetRandomPoinInArea(area, goal, out Vector3 teleportPosition))
+                    if (area != null)
                     {
-                        SimulationSkipped = true;
-                        Debug.LogWarning($"Skipping entire simulation because teleport for area '{area.name}' has no reachable position for goal '{goal.name}'.");
-                        continue;
+                        Vector3 teleportPosition;
+                        using (TeleportDestinationMarker.Auto())
+                        {
+                            if (!TryGetRandomPoinInArea(area, goal, out teleportPosition))
+                            {
+                                SimulationSkipped = true;
+                                Debug.LogWarning($"Skipping entire simulation because teleport for area '{area.name}' has no reachable position for goal '{goal.name}'.");
+                                continue;
+                            }
+                        }
+
+                        agent.transform.position = teleportPosition;
+                    }
+                    else
+                    {
+                        agent.transform.position = goal.transform.position;
                     }
 
-                    agent.transform.position = teleportPosition;
+                    using (TeleportCellMarker.Auto())
+                        agent.CurrentCell = GetClosestCellToPoint(agent.transform.position);
+                    agent.wasTeleported = true;
                 }
-                else
-                {
-                    agent.transform.position = goal.transform.position;
-                }
-                agent.CurrentCell = GetClosestCellToPoint(agent.transform.position);
-                agent.wasTeleported = true;
+                _area.teleportBuffer.Clear();
             }
-            _area.teleportBuffer.Clear();
         }
 
         protected bool TryGetRandomPoinInArea(SpawnArea _area, GameObject goal, out Vector3 position)
         {
             position = default;
             int oldSeed = Random.seed;
-            List<Auxin> candidates = Auxins
-                .Where(auxin => _area.IsInsideArea(auxin.Position))
-                .OrderBy(_ => Random.value)
-                .ToList();
-            candidates.AddRange(Auxins
-                .Where(auxin => !_area.IsInsideArea(auxin.Position))
-                .OrderBy(auxin => Vector3.Distance(auxin.Position, _area.transform.position)));
+            if (!_teleportPositionCache.TryGetValue(_area, out Dictionary<GameObject, TeleportPositionCache> goalCaches))
+            {
+                goalCaches = new Dictionary<GameObject, TeleportPositionCache>();
+                _teleportPositionCache.Add(_area, goalCaches);
+            }
 
-            Vector3 goalPosition = goal.transform.position;
-            Collider goalCollider = goal.GetComponent<Collider>();
-            if (goalCollider != null)
-                goalPosition = goalCollider.ClosestPoint(goalPosition);
+            if (!goalCaches.TryGetValue(goal, out TeleportPositionCache cache))
+            {
+                using (TeleportCacheBuildMarker.Auto())
+                {
+                    cache = BuildTeleportPositionCache(_area, goal);
+                    goalCaches.Add(goal, cache);
+                }
+            }
 
             bool found = false;
-            foreach (Auxin auxin in candidates)
+            using (TeleportCacheSelectionMarker.Auto())
             {
-                if (!UnityEngine.AI.NavMesh.SamplePosition(auxin.Position, out UnityEngine.AI.NavMeshHit startHit, AGENT_RADIUS, UnityEngine.AI.NavMesh.AllAreas) ||
-                    !UnityEngine.AI.NavMesh.SamplePosition(goalPosition, out UnityEngine.AI.NavMeshHit goalHit, 10f, UnityEngine.AI.NavMesh.AllAreas))
-                    continue;
-
-                UnityEngine.AI.NavMeshPath path = new UnityEngine.AI.NavMeshPath();
-                if (UnityEngine.AI.NavMesh.CalculatePath(startHit.position, goalHit.position, UnityEngine.AI.NavMesh.AllAreas, path) &&
-                    path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete)
+                if (cache.insidePositions.Count > 0)
                 {
-                    position = auxin.Position;
+                    position = cache.insidePositions[Random.Range(0, cache.insidePositions.Count)];
                     found = true;
-                    break;
+                }
+                else if (cache.hasOutsidePosition)
+                {
+                    position = cache.outsidePosition;
+                    found = true;
                 }
             }
 
@@ -989,6 +1064,106 @@ namespace Biocrowds.Core
             }
 
             return true;
+        }
+
+        private TeleportPositionCache BuildTeleportPositionCache(SpawnArea area, GameObject goal)
+        {
+            TeleportPositionCache cache = new TeleportPositionCache();
+            _teleportInsideCandidates.Clear();
+            _teleportOutsideCandidates.Clear();
+
+            using (TeleportCacheInsideScanMarker.Auto())
+            {
+                foreach (Auxin auxin in Auxins)
+                {
+                    if (area.IsInsideArea(auxin.Position))
+                        _teleportInsideCandidates.Add(auxin);
+                }
+            }
+
+            Vector3 goalPosition = goal.transform.position;
+            Collider goalCollider = goal.GetComponent<Collider>();
+            if (goalCollider != null)
+                goalPosition = goalCollider.ClosestPoint(goalPosition);
+
+            if (!UnityEngine.AI.NavMesh.SamplePosition(
+                goalPosition,
+                out UnityEngine.AI.NavMeshHit goalHit,
+                10f,
+                UnityEngine.AI.NavMesh.AllAreas))
+                return cache;
+
+            UnityEngine.AI.NavMeshPath path = new UnityEngine.AI.NavMeshPath();
+            using (TeleportCacheInsidePathsMarker.Auto())
+            {
+                for (int i = _teleportInsideCandidates.Count - 1; i > 0; i--)
+                {
+                    int randomIndex = Random.Range(0, i + 1);
+                    Auxin auxin = _teleportInsideCandidates[i];
+                    _teleportInsideCandidates[i] = _teleportInsideCandidates[randomIndex];
+                    _teleportInsideCandidates[randomIndex] = auxin;
+                }
+
+                foreach (Auxin auxin in _teleportInsideCandidates)
+                {
+                    if (HasCompleteNavMeshPath(auxin.Position, goalHit.position, path))
+                    {
+                        cache.insidePositions.Add(auxin.Position);
+                        if (cache.insidePositions.Count >= MaxCachedTeleportPositions)
+                            break;
+                    }
+                }
+            }
+
+            if (cache.insidePositions.Count > 0)
+                return cache;
+
+            using (TeleportCacheFallbackMarker.Auto())
+            {
+                foreach (Auxin auxin in Auxins)
+                {
+                    if (!area.IsInsideArea(auxin.Position))
+                        _teleportOutsideCandidates.Add(auxin);
+                }
+
+                Vector3 areaPosition = area.transform.position;
+                _teleportOutsideCandidates.Sort((first, second) =>
+                {
+                    float firstDistance = (first.Position - areaPosition).sqrMagnitude;
+                    float secondDistance = (second.Position - areaPosition).sqrMagnitude;
+                    return firstDistance.CompareTo(secondDistance);
+                });
+
+                foreach (Auxin auxin in _teleportOutsideCandidates)
+                {
+                    if (!HasCompleteNavMeshPath(auxin.Position, goalHit.position, path))
+                        continue;
+
+                    cache.outsidePosition = auxin.Position;
+                    cache.hasOutsidePosition = true;
+                    break;
+                }
+            }
+
+            return cache;
+        }
+
+        private bool HasCompleteNavMeshPath(
+            Vector3 startPosition,
+            Vector3 goalPosition,
+            UnityEngine.AI.NavMeshPath path)
+        {
+            return UnityEngine.AI.NavMesh.SamplePosition(
+                    startPosition,
+                    out UnityEngine.AI.NavMeshHit startHit,
+                    AGENT_RADIUS,
+                    UnityEngine.AI.NavMesh.AllAreas) &&
+                UnityEngine.AI.NavMesh.CalculatePath(
+                    startHit.position,
+                    goalPosition,
+                    UnityEngine.AI.NavMesh.AllAreas,
+                    path) &&
+                path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete;
         }
 
         protected int GetNewAgentID()

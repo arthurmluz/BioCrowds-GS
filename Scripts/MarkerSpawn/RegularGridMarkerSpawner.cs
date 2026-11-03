@@ -16,13 +16,13 @@ public class RegularGridMarkerSpawner : MarkerSpawner
         // Generate a number of markers for each Cell
         for (int c = 0; c < cells.Count; c++)
         {
-            StartCoroutine(PopulateCell(cells[c], auxins, c));
+            PopulateCell(cells[c], auxins, c);
         }
 
         yield break;
     }
 
-    private IEnumerator PopulateCell(Cell cell, List<Auxin> auxins, int cellIndex)
+    private void PopulateCell(Cell cell, List<Auxin> auxins, int cellIndex)
     {
         var bounds = new Bounds(cell.transform.position, Vector3.one * (_cellSize - MarkerRadius));
         var floatCorrection = MarkerRadius / 4f;
@@ -63,7 +63,6 @@ public class RegularGridMarkerSpawner : MarkerSpawner
                 count++;
             }
         }
-        yield break;
     }
 
 }
