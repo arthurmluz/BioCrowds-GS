@@ -769,7 +769,11 @@ namespace Biocrowds.Core
                     _area.UpdateSpawnCounter(deltaTime);
                     if (_area.CycleReady)
                     {
-                        for (int i = 0; i < _area.quantitySpawnedEachCycle; i++)
+                        int spawnCount = _area.quantitySpawnedEachCycle;
+                        if (_area.capSpawnCountToRemaining && _area.limitRepeatingSpawn)
+                            spawnCount = Mathf.Min(spawnCount, _area.quantityLimitToSpawn);
+
+                        for (int i = 0; i < spawnCount; i++)
                         {
                             if (MAX_AGENTS == 0 || _agents.Count < MAX_AGENTS)
                                 SpawnNewAgentInArea(_area, false);
@@ -989,8 +993,16 @@ namespace Biocrowds.Core
 
                 GameObject goal = _area.enteringGoalList[0];
                 SpawnArea area = goal.GetComponentInChildren<SpawnArea>();
-                foreach (Agent agent in _area.teleportBuffer)
+                int bufferIndex = 0;
+                while (bufferIndex < _area.teleportBuffer.Count)
                 {
+                    Agent agent = _area.teleportBuffer[bufferIndex];
+                    if (area != null && WouldExceedTeleportDensity(area))
+                    {
+                        bufferIndex++;
+                        continue;
+                    }
+
                     if (area != null)
                     {
                         Vector3 teleportPosition;
@@ -1000,6 +1012,7 @@ namespace Biocrowds.Core
                             {
                                 SimulationSkipped = true;
                                 Debug.LogWarning($"Skipping entire simulation because teleport for area '{area.name}' has no reachable position for goal '{goal.name}'.");
+                                _area.teleportBuffer.RemoveAt(bufferIndex);
                                 continue;
                             }
                         }
@@ -1014,9 +1027,34 @@ namespace Biocrowds.Core
                     using (TeleportCellMarker.Auto())
                         agent.CurrentCell = GetClosestCellToPoint(agent.transform.position);
                     agent.wasTeleported = true;
+                    agent.isWaiting = false;
+                    _area.teleportBuffer.RemoveAt(bufferIndex);
                 }
-                _area.teleportBuffer.Clear();
             }
+        }
+
+        private bool WouldExceedTeleportDensity(SpawnArea destination)
+        {
+            float maximumDensity = destination.maximumAgentDensityForTeleport;
+            if (maximumDensity <= 0f)
+                return false;
+
+            Bounds bounds = destination.Collider != null
+                ? destination.Collider.bounds
+                : new Bounds(destination.transform.position, destination.transform.lossyScale);
+            float areaSize = bounds.size.x * bounds.size.z;
+            if (areaSize <= 0f)
+                return false;
+
+            int occupants = 0;
+            foreach (Agent agent in _agents)
+            {
+                if (agent != null && agent.isActiveAndEnabled &&
+                    destination.IsInsideArea(agent.transform.position))
+                    occupants++;
+            }
+
+            return (occupants + 1f) / areaSize > maximumDensity;
         }
 
         protected bool TryGetRandomPoinInArea(SpawnArea _area, GameObject goal, out Vector3 position)

@@ -19,15 +19,20 @@ public class SpawnArea : MonoBehaviour
     public int quantityLimitToSpawn = 1;
     public float cycleLenght = 1.0f;    
     public int quantitySpawnedEachCycle;
+    public bool capSpawnCountToRemaining;
     public bool repeatingRemoveWhenGoalReached;
     public List<GameObject> repeatingGoalList;
     public List<float> repeatingWaitList;
     private float cycleCounter = 0.0f;
     private bool cycleReady = false;
+    public bool useInitialSpawnDelay;
+    public float initialSpawnDelay;
+    private bool initialSpawnDelayElapsed;
 
     [Header("Entering Spawner Settings")]
     public bool setGoalOnEnter = false;
     public bool teleportToGoalOnEnter = false;
+    public float maximumAgentDensityForTeleport;
     public List<GameObject> enteringGoalList;
     public List<Agent> teleportBuffer;
 
@@ -55,7 +60,23 @@ public class SpawnArea : MonoBehaviour
 
     public void UpdateSpawnCounter(float dt)
     {
-        if (cycleLenght == 0.0f || quantitySpawnedEachCycle == 0 || (limitRepeatingSpawn && quantityLimitToSpawn == 0))
+        if (quantitySpawnedEachCycle == 0 || (limitRepeatingSpawn && quantityLimitToSpawn == 0))
+            return;
+
+        if (useInitialSpawnDelay && !initialSpawnDelayElapsed)
+        {
+            cycleCounter += dt;
+            if (cycleCounter < Mathf.Max(0f, initialSpawnDelay))
+                return;
+
+            cycleCounter = 0f;
+            initialSpawnDelayElapsed = true;
+            cycleReady = true;
+            return;
+        }
+
+        initialSpawnDelayElapsed = true;
+        if (cycleLenght == 0.0f)
             return;
 
         cycleCounter += dt;
@@ -118,6 +139,12 @@ public class SpawnArea : MonoBehaviour
         if (teleportToGoalOnEnter)
         {
             teleportBuffer.Add(agent);
+            if (enteringGoalList.Count > 0)
+            {
+                SpawnArea destination = enteringGoalList[0].GetComponentInChildren<SpawnArea>();
+                if (destination != null && destination.maximumAgentDensityForTeleport > 0f)
+                    agent.isWaiting = true;
+            }
         }
     }
 }
