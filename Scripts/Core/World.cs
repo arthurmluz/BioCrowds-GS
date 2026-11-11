@@ -87,6 +87,8 @@ namespace Biocrowds.Core
         public List<Agent> _finishedAgents = new List<Agent>();
         List<Cell> _cells = new List<Cell>();
         List<Auxin> _auxins = new List<Auxin>();
+        private readonly List<Auxin> _claimedAuxins = new List<Auxin>();
+        private readonly List<Agent> _agentsToRemove = new List<Agent>();
 
         [SerializeField] protected List<SpawnArea> spawnAreas;
         public List<SpawnArea> Areas => spawnAreas;
@@ -104,6 +106,7 @@ namespace Biocrowds.Core
         {
             get { return _auxins; }
         }
+        public IReadOnlyList<Auxin> ClaimedAuxins => _claimedAuxins;
 
         [SerializeField]
         protected MarkerSpawner _markerSpawner = null;
@@ -128,6 +131,8 @@ namespace Biocrowds.Core
         private static readonly ProfilerMarker TeleportCellMarker = new ProfilerMarker("BioCrowds.World.Teleport.CellAssignment");
         private static readonly ProfilerMarker GoalHandlingMarker = new ProfilerMarker("BioCrowds.World.GoalHandling");
         private static readonly ProfilerMarker NavMeshStepMarker = new ProfilerMarker("BioCrowds.World.NavmeshStep");
+        private static readonly ProfilerMarker FinishedStateMarker = new ProfilerMarker("BioCrowds.World.FinishedState");
+        private static readonly ProfilerMarker AfterUpdateCallbacksMarker = new ProfilerMarker("BioCrowds.World.AfterUpdateCallbacks");
 
 
         //max auxins on the ground
@@ -793,9 +798,9 @@ namespace Biocrowds.Core
             //reset auxins
             using (AuxinResetMarker.Auto())
             {
-                for (int i = 0; i < _cells.Count; i++)
-                    for (int j = 0; j < _cells[i].Auxins.Count; j++)
-                        _cells[i].Auxins[j].ResetAuxin();
+                for (int i = 0; i < _claimedAuxins.Count; i++)
+                    _claimedAuxins[i].ResetAuxin();
+                _claimedAuxins.Clear();
             }
 
             //find nearest auxins for each agent
@@ -819,7 +824,7 @@ namespace Biocrowds.Core
             4 - step
             */
 
-            List<Agent> _agentsToRemove = new List<Agent>();
+            _agentsToRemove.Clear();
             //for (int i = 0; i < _maxAgents; i++)
             using (AgentMovementMarker.Auto())
             {
@@ -892,9 +897,15 @@ namespace Biocrowds.Core
             }
 
             // check if finished
-            _isFinished = _agents.Count == 0 && spawnAreas.All(x => x.Finished);
+            using (FinishedStateMarker.Auto())
+            {
+                _isFinished = _agents.Count == 0;
+                for (int i = 0; _isFinished && i < spawnAreas.Count; i++)
+                    _isFinished = spawnAreas[i].Finished;
+            }
 
-            OnAfterUpdate?.Invoke();
+            using (AfterUpdateCallbacksMarker.Auto())
+                OnAfterUpdate?.Invoke();
 
             if (_isFinished)
                 OnSimulationFinished?.Invoke();            
@@ -929,6 +940,11 @@ namespace Biocrowds.Core
             }
 
             return _cells[minIndex];
+        }
+
+        public void TrackAssignedAuxin(Auxin auxin)
+        {
+            _claimedAuxins.Add(auxin);
         }
 
         protected void SpawnNewAgent(Vector3 _pos, bool _removeWhenGoalReached, List<GameObject> _goalList)

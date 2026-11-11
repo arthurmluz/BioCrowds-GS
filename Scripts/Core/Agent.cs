@@ -447,22 +447,7 @@ namespace Biocrowds.Core
                     //see if the distance between this agent and this auxin is smaller than the actual value, and inside agent radius
                     float distanceSqr = (agentPosition - cellAuxins[i].Position).sqrMagnitude;
                     if (distanceSqr < cellAuxins[i].MinDistance && distanceSqr <= agentRadiusSqr)
-                    {
-                        //take the auxin!
-                        //if this auxin already was taken, need to remove it from the agent who had it
-                        if (cellAuxins[i].IsTaken)
-                            cellAuxins[i].Agent.Auxins.Remove(cellAuxins[i]);
-
-                        //auxin is taken
-                        cellAuxins[i].IsTaken = true;
-
-                        //auxin has agent
-                        cellAuxins[i].Agent = this;
-                        //update min distance
-                        cellAuxins[i].MinDistance = distanceSqr;
-                        //update my auxins
-                        _auxins.Add(cellAuxins[i]);
-                    }
+                        ClaimAuxin(cellAuxins[i], distanceSqr);
                 }
 
                 using (FindCellMarker.Auto())
@@ -529,21 +514,7 @@ namespace Biocrowds.Core
                 //see if the distance between this agent and this auxin is smaller than the actual value, and smaller than agent radius
                 float distanceSqr = (agentPosition - cellAuxins[c].Position).sqrMagnitude;
                 if (distanceSqr < cellAuxins[c].MinDistance && distanceSqr <= agentRadiusSqr)
-                {
-                    //take the auxin
-                    //if this auxin already was taken, need to remove it from the agent who had it
-                    if (cellAuxins[c].IsTaken)
-                        cellAuxins[c].Agent.Auxins.Remove(cellAuxins[c]);
-
-                    //auxin is taken
-                    cellAuxins[c].IsTaken = true;
-                    //auxin has agent
-                    cellAuxins[c].Agent = this;
-                    //update min distance
-                    cellAuxins[c].MinDistance = distanceSqr;
-                    //update my auxins
-                    _auxins.Add(cellAuxins[c]);
-                }
+                    ClaimAuxin(cellAuxins[c], distanceSqr);
             }
 
             //see distance to this cell
@@ -553,6 +524,19 @@ namespace Biocrowds.Core
                 pDistToCellSqr = distanceToNeighbourCell;
                 _currentCell = pCell;
             }
+        }
+
+        private void ClaimAuxin(Auxin auxin, float distanceSqr)
+        {
+            if (auxin.IsTaken)
+                auxin.Agent.Auxins.Remove(auxin);
+            else
+                _world.TrackAssignedAuxin(auxin);
+
+            auxin.IsTaken = true;
+            auxin.Agent = this;
+            auxin.MinDistance = distanceSqr;
+            _auxins.Add(auxin);
         }
 
         public GameObject GetCurrentGoal() {
